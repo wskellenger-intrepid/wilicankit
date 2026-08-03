@@ -59,22 +59,21 @@ use case, not a hardcoded assumption anywhere in the code.
 | `storage_json.h/.c` | Pure struct<->JSON encode/decode for the signal/message/control tables (cJSON tree building/parsing, no file I/O). Host-testable (`tests/test_storage_json.c`). |
 | `storage.h/.c` | Save/load/list/delete named configs as human-readable JSON files on `0:/wilicankit/*.json` (FatFs). Wraps storage_json.h/.c with FatFs I/O and a PSRAM-backed allocator for cJSON (see build-notes.md). Load uses a scratch-then-commit pattern for safety. |
 | `ui_config.h/.c` | Config page: New / Save As over an `lv_file_explorer` (LVGL's built-in FatFs driver, `lv_fs_fatfs_init()` in `main.c`) browsing `0:/wilicankit`; tap a file to Load, toolbar button to Delete. |
-| `lv_conf.h` | Minimal LVGL v9.2.2 config — only overrides that differ from LVGL's own defaults are listed; everything else falls back to `lv_conf_internal.h`. |
+| `lv_conf.h` | Minimal LVGL v9.3.0 config — only overrides that differ from LVGL's own defaults are listed; everything else falls back to `lv_conf_internal.h`. |
 
 ## Status (as of this writing)
 
 All modules implemented and building cleanly:
-- `fw build wilicankit` (or `python tools/fw.py build wilicankit`) links
-  successfully.
-- `fw test` / the host CTest `can_pack` target passes (bit pack/unpack round
-  trips, both endiannesses, signal scale/offset conversions).
+- `tools/build.ps1` links successfully.
+- `tools/test.ps1` / the host CTest `can_pack` target passes (bit pack/unpack
+  round trips, both endiannesses, signal scale/offset conversions).
 - **Nothing has run on real hardware yet.** No touch/display/OneWili-link
   smoke test has been performed on a physical board. Do that before trusting
   any of the runtime behavior described here.
 
 ## Verification checklist for the next hardware session
 
-1. `fw flash wilicankit` + `fw rtt` — confirm the screen renders the tab
+1. `tools/flash.ps1` + `tools/rtt.ps1` — confirm the screen renders the tab
    bar, touch responds, and `can_link: link up` appears in RTT (retry-loop
    DIAG if MAIN isn't running stock firmware).
 2. Create a signal, create a message placing it, enable periodic TX, verify

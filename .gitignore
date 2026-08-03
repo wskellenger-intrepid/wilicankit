@@ -1,0 +1,7 @@
+build/
+build-*/
+*.uf2
+*.elf
+*.bin
+__pycache__/
+.venv/

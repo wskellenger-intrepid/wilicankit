@@ -2,23 +2,30 @@
 
 CMake/LVGL/cJSON/memory specifics worth knowing before touching the build.
 
-## LVGL + cJSON via FetchContent
+## wilibsp + LVGL are git submodules; cJSON is FetchContent
 
-`CMakeLists.txt` pins LVGL to `v9.2.2` and cJSON to `v1.7.18` via
-`FetchContent`. These are the repo's **only** network-fetched build
-dependencies — every other dependency in this repo is harvested source (see
-AGENTS.md). Accepted deliberately for this app; if offline/reproducible
-builds ever become a hard requirement, consider vendoring both instead.
-cJSON backs `storage_json.c` (config save/load, see `docs/known-risks.md`
-and the storage_json row in `architecture.md`) — its own test/utils targets
-and strict upstream compiler flags (`-Werror` tuned for host GCC/Clang, not
+This is a standalone repo (see `wilidoro` for the same pattern): `wilibsp`
+(board support package) and `LVGL` are git submodules — `wilibsp` at path
+`wilibsp`, LVGL at `third_party/lvgl`, pinned to tag `v9.3.0`. `git clone
+--recurse-submodules` (or `git submodule update --init --recursive` after a
+plain clone) is required before configuring; `wilibsp` itself has its own
+nested submodule (`libs/onewili`), which comes along transitively with
+`--recursive`.
+
+cJSON stays on CMake `FetchContent`, pinned to `v1.7.18` — small, and the
+one remaining network-fetched build dependency (everything else is either a
+submodule or harvested source — see AGENTS.md). cJSON backs
+`storage_json.c` (config save/load, see `docs/known-risks.md` and the
+storage_json row in `architecture.md`) — its own test/utils targets and
+strict upstream compiler flags (`-Werror` tuned for host GCC/Clang, not
 arm-none-eabi) are disabled via `CACHE ... FORCE` overrides before
 `FetchContent_MakeAvailable(cjson)`.
 
-Key CMake variables set **before** `FetchContent_MakeAvailable(lvgl)`:
-- `LV_CONF_PATH` → points at `apps/wilicankit/lv_conf.h`.
-- `LV_CONF_BUILD_DISABLE_EXAMPLES` / `_DEMOS` / `_THORVG_INTERNAL` → all
-  `ON`, to keep the fetched tree lean (we only need the core+widgets lib).
+Key CMake variables set **before** `add_subdirectory(third_party/lvgl)`:
+- `LV_BUILD_CONF_PATH` → points at this repo's `lv_conf.h`.
+- `CONFIG_LV_BUILD_EXAMPLES` / `_DEMOS` / `CONFIG_LV_USE_THORVG_INTERNAL` →
+  all `OFF`, to keep the vendored tree lean (we only need the core+widgets
+  lib).
 
 `lv_conf.h` is intentionally minimal: LVGL's `lv_conf_internal.h` supplies a
 sane default for every macro NOT defined in `lv_conf.h` (mirroring
@@ -29,7 +36,7 @@ overrides: `LV_COLOR_DEPTH=16`, `LV_USE_STDLIB_MALLOC=LV_STDLIB_BUILTIN`,
 
 ## Pixel format / byte order
 
-Display is RGB565, but the ST7796 driver (`bsp/display/st7796.h`) wants
+Display is RGB565, but the ST7796 driver (`wilibsp/bsp/display/st7796.h`) wants
 **big-endian** 16-bit words on the wire, while LVGL renders in native
 (little-endian, on this ARM target) RGB565. There is **no**
 `LV_COLOR_16_SWAP` macro in LVGL v9 (that was removed after v8) — the fix
@@ -40,7 +47,7 @@ hardware, check that this call is still in place.
 
 ## Stack size: hard-capped at 4 KB
 
-Default `PICO_STACK_SIZE` is `0x800` (2 KB) — see `apps/toggleled/main.c`'s
+Default `PICO_STACK_SIZE` is `0x800` (2 KB) — see `wilibsp/apps/toggleled/main.c`'s
 comment. This app overrides it via
 `target_compile_definitions(wilicankit PRIVATE PICO_STACK_SIZE=0x1000)`
 (4 KB). This works because `pico_crt0`'s `crt0.S` is an `INTERFACE` source
@@ -93,7 +100,7 @@ here is silent memory corruption, not a clean crash.
 `get_errors` (VS Code's C/C++ IntelliSense) has shown a pile of
 "identifier X is undefined" false positives on files in this app — these
 were traced to a **stale IntelliSense cache**, not real errors (the actual
-`arm-none-eabi-gcc` toolchain build, `fw build wilicankit`, is authoritative
+`arm-none-eabi-gcc` toolchain build, `tools/build.ps1`, is authoritative
 and passed at the same time IntelliSense was complaining). If this recurs,
 reload/reset the C/C++ IntelliSense database or confirm `compileCommands`
 points at `build/compile_commands.json` — don't "fix" code based on these

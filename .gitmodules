@@ -1,0 +1,6 @@
+[submodule "wilibsp"]
+	path = wilibsp
+	url = https://github.com/freewili/wilibsp.git
+[submodule "third_party/lvgl"]
+	path = third_party/lvgl
+	url = https://github.com/lvgl/lvgl.git
