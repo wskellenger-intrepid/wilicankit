@@ -248,7 +248,12 @@ static void action_back(void) {
     // leaf context popping to its own tab-selector) means the *area*, not
     // just the bar, changes — switch content back to Home or it stays
     // stuck showing whatever sub-page was on screen (e.g. Messages).
-    if (parent == BAR_TOP) go_home();
+    if (parent == BAR_TOP) { go_home(); return; }
+    // Popping a leaf action bar (Signals/Messages/Load/Controls) back to
+    // its hub otherwise leaves that leaf's content page on screen — blank
+    // the hub's landing tab, same as a fresh goto_area() entry.
+    if (parent == BAR_TRANSMIT) ui_shell_set_transmit_tab(-1);
+    else if (parent == BAR_SETUP) ui_shell_set_setup_tab(-1);
     else configure_bottom_bar();
 }
 
