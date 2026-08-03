@@ -61,7 +61,6 @@
 #define LV_USE_ANIMIMG     0
 #define LV_USE_ARC         0
 #define LV_USE_CALENDAR    0
-#define LV_USE_CANVAS      0
 #define LV_USE_CHART       0
 #define LV_USE_CHECKBOX    0
 #define LV_USE_IMAGEBUTTON 0
@@ -76,5 +75,8 @@
 #define LV_USE_TABVIEW     0
 #define LV_USE_TILEVIEW    0
 #define LV_USE_WIN         0
+
+/* Monitor's Health page draws live stats onto a pixel buffer (ui_monitor.c). */
+#define LV_USE_CANVAS      1
 
 #endif /*LV_CONF_H*/

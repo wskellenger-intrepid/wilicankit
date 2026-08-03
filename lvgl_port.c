@@ -30,7 +30,10 @@
 // the original 24-row count with ~10 KB of headroom to spare. Re-check
 // headroom via arm-none-eabi-size -A / the linker map after any future LVGL
 // or feature changes.
-#define LVGL_PORT_BUF_ROWS 24
+// Trimmed 24 -> 20 rows (2026-08-03, Monitor/Health page): enabling
+// LV_USE_CANVAS (lv_conf.h) for the canvas-based Health stats page added
+// enough copy_to_ram code to overflow RAM by 3016 bytes.
+#define LVGL_PORT_BUF_ROWS 20
 #define LVGL_PORT_BUF_PX   (ST7796_W * LVGL_PORT_BUF_ROWS)
 #define LVGL_PORT_BUF_BYTES ((size_t)LVGL_PORT_BUF_PX * sizeof(uint16_t))
 static uint16_t s_buf1[LVGL_PORT_BUF_PX];

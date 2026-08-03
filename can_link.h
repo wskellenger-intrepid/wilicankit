@@ -50,6 +50,25 @@ bool can_link_disable_periodic(uint8_t slot_index, const can_message_t *msg);
 // Binary-stream frames dropped (diagnostics only, see onewili_fwgui.h).
 uint32_t can_link_dropped_frames(void);
 
+// ── Health page stats (ui_monitor.c) ────────────────────────────────────
+// Per-message send-attempt/success counts, since can_link_open(). Bounds-
+// checked against CAN_MAX_MESSAGES; out-of-range msg_index returns 0.
+uint32_t can_link_tx_attempts(uint8_t msg_index);
+uint32_t can_link_tx_ok(uint8_t msg_index);
+
+// Non-CAN OneWili liveness-probe counts (see can_link_health_check()) and
+// the ow_status of its most recent failure (-1 = none yet).
+void can_link_health_stats(uint32_t *attempts, uint32_t *ok, int32_t *last_err);
+
+// Consecutive send-failure streak and the threshold that triggers
+// auto-offline (CAN_LINK_OFFLINE_FAULT_THRESHOLD) — see can_link_send_once().
+uint8_t can_link_fault_streak(void);
+uint8_t can_link_fault_threshold(void);
+
+// Placeholder: this app has no CAN RX path yet (display CPU has no native
+// CAN controller, see AGENTS.md) — always 0 until that lands.
+uint32_t can_link_rx_frames(void);
+
 // Sends FWGUI_EVENT_POWER_ZONES with the live picpwr_rails() mask so MAIN
 // re-inits its CAN controller once the CAN rail is up. Idempotent — call on
 // open, on mask change, AND periodically (main.c does all three): MAIN can

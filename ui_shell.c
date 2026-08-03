@@ -6,6 +6,7 @@
 #include "ui_transmit.h"
 #include "ui_controls.h"
 #include "ui_config.h"
+#include "ui_monitor.h"
 #include "ui_icons.h"
 #include "can_link.h"
 #include "lvgl_port.h"
@@ -38,6 +39,13 @@ typedef enum {
     SETUP_TAB_COUNT
 } setup_tab_t;
 
+// Monitor's own sub-tab, mirroring setup_tab_t's pattern above. Just one
+// leaf today (Health); more can be added the same way later.
+typedef enum {
+    MONITOR_HEALTH = 0,
+    MONITOR_TAB_COUNT
+} monitor_tab_t;
+
 // The bottom bar is a single set of 5 physical button slots whose
 // label/icon/action are reconfigured based on context, rather than a
 // top-level bar plus separate in-page tab rows — this matches the device's
@@ -45,13 +53,14 @@ typedef enum {
 // button regardless of what it currently does.
 typedef enum {
     BAR_TOP = 0,      // Monitor / Transmit / Diagnostics / Setup / Online
+    BAR_MONITOR,      // Back / Health / (blank) / (blank) / (blank)
     BAR_TRANSMIT,     // Back / Messages / Controls / Setup / Online
     BAR_SETUP,        // Back / Signals / Messages / Load / (blank)
     BAR_SIGNALS,      // Back / Add Signal / (blank) / (blank) / (blank)
     BAR_MESSAGES,     // Back / Add Message / (blank) / (blank) / (blank)
     BAR_LOAD,         // Back / New / Save As / Delete / (blank)
     BAR_CONTROLS,     // Back / Add Slider / Add Toggle / (blank) / (blank)
-    // Monitor/Diagnostics aren't implemented yet — Back is the only action.
+    // Diagnostics isn't implemented yet — Back is the only action.
     BAR_PLACEHOLDER,  // Back / (blank) / (blank) / (blank) / (blank)
     // Generic, dynamically-configured leaf screens pushed via
     // ui_shell_open_form/ui_shell_open_confirm (see the overlay nav stack
@@ -83,11 +92,16 @@ static const char *SETUP_LABELS[SETUP_TAB_COUNT] = {
     "Signals", "Messages", "Load"
 };
 
+static const char *MONITOR_LABELS[MONITOR_TAB_COUNT] = {
+    "Health"
+};
+
 static app_area_t s_active_area = AREA_MONITOR;
 // -1 = blank landing (no tab selected yet) — reset on every fresh area
 // entry so re-visiting Transmit/Setup never shows a stale leftover tab.
 static int s_active_transmit = -1;
 static int s_active_setup = -1;
+static int s_active_monitor = -1;
 static bar_mode_t s_bar_mode = BAR_TOP;
 static bool s_last_online;
 // True at boot and whenever Back exits a top-level area back to the tile
@@ -103,6 +117,8 @@ static lv_obj_t *s_transmit_pages[TRANSMIT_TAB_COUNT];
 static lv_obj_t *s_transmit_blank;
 static lv_obj_t *s_setup_pages[SETUP_TAB_COUNT];
 static lv_obj_t *s_setup_blank;
+static lv_obj_t *s_monitor_pages[MONITOR_TAB_COUNT];
+static lv_obj_t *s_monitor_blank;
 
 // 5 persistent bottom-bar button slots, relabeled/re-iconed per bar mode
 // instead of being destroyed/recreated (cheaper, and avoids heap churn on
@@ -144,6 +160,7 @@ static bar_mode_t  s_pre_overlay_bar_mode;   // restored when the stack empties
 
 static void ui_shell_set_transmit_tab(int tab);
 static void ui_shell_set_setup_tab(int tab);
+static void ui_shell_set_monitor_tab(int tab);
 static void ui_shell_set_area(app_area_t area);
 static void go_home(void);
 static void configure_bottom_bar(void);
@@ -151,6 +168,9 @@ static void style_online_btn(void);
 
 static void refresh_area(app_area_t area) {
     switch (area) {
+        case AREA_MONITOR:
+            if (s_active_monitor == MONITOR_HEALTH) ui_monitor_refresh();
+            break;
         case AREA_TRANSMIT:
             if (s_active_transmit == TRANSMIT_MESSAGES) ui_transmit_refresh();
             else if (s_active_transmit == TRANSMIT_CONTROLS) ui_controls_refresh();
@@ -176,6 +196,8 @@ static void refresh_title(void) {
         lv_snprintf(title, sizeof title, "Setup / %s", SETUP_LABELS[s_active_setup]);
     } else if (s_active_area == AREA_TRANSMIT && s_active_transmit >= 0) {
         lv_snprintf(title, sizeof title, "Transmit / %s", TRANSMIT_LABELS[s_active_transmit]);
+    } else if (s_active_area == AREA_MONITOR && s_active_monitor >= 0) {
+        lv_snprintf(title, sizeof title, "Monitor / %s", MONITOR_LABELS[s_active_monitor]);
     } else {
         lv_snprintf(title, sizeof title, "%s", AREA_LABELS[s_active_area]);
     }
@@ -212,9 +234,11 @@ static void style_online_btn(void) {
 static void goto_area(app_area_t area) {
     s_bar_mode = (area == AREA_TRANSMIT) ? BAR_TRANSMIT
                : (area == AREA_SETUP) ? BAR_SETUP
+               : (area == AREA_MONITOR) ? BAR_MONITOR
                : BAR_PLACEHOLDER;
     if (area == AREA_TRANSMIT) ui_shell_set_transmit_tab(-1);
     if (area == AREA_SETUP) ui_shell_set_setup_tab(-1);
+    if (area == AREA_MONITOR) ui_shell_set_monitor_tab(-1);
     ui_shell_set_area(area);
 }
 
@@ -262,6 +286,7 @@ static void action_transmit_controls(void) { s_bar_mode = BAR_CONTROLS; ui_shell
 static void action_setup_signals(void) { s_bar_mode = BAR_SIGNALS; ui_shell_set_setup_tab(SETUP_SIGNALS); }
 static void action_setup_messages(void) { s_bar_mode = BAR_MESSAGES; ui_shell_set_setup_tab(SETUP_MESSAGES); }
 static void action_setup_load(void) { s_bar_mode = BAR_LOAD; ui_shell_set_setup_tab(SETUP_CONFIG); }
+static void action_monitor_health(void) { ui_shell_set_monitor_tab(MONITOR_HEALTH); }
 static void action_online_toggle(void) { can_link_set_online(!can_link_is_online()); style_online_btn(); }
 
 static void action_signals_add(void) { ui_signals_add(); }
@@ -278,6 +303,13 @@ static const bar_slot_t BAR_TOP_SLOTS[5] = {
     { "Diagnostics", &ui_icon_diagnostics, action_area_diagnostics },
     { "Setup",       &ui_icon_setup,       action_enter_setup },
     { NULL,          &ui_icon_online,      action_online_toggle },
+};
+static const bar_slot_t BAR_MONITOR_SLOTS[5] = {
+    { "Back",   &ui_icon_back,   action_back },
+    { "Health", &ui_icon_health, action_monitor_health },
+    { NULL,     NULL,            NULL },
+    { NULL,     NULL,            NULL },
+    { NULL,     NULL,            NULL },
 };
 static const bar_slot_t BAR_TRANSMIT_SLOTS[5] = {
     { "Back",     &ui_icon_back,     action_back },
@@ -333,6 +365,7 @@ static const bar_slot_t BAR_PLACEHOLDER_SLOTS[5] = {
 
 static const bar_slot_t *bar_slots_for_mode(bar_mode_t mode) {
     switch (mode) {
+        case BAR_MONITOR:     return BAR_MONITOR_SLOTS;
         case BAR_TRANSMIT:    return BAR_TRANSMIT_SLOTS;
         case BAR_SETUP:       return BAR_SETUP_SLOTS;
         case BAR_SIGNALS:     return BAR_SIGNALS_SLOTS;
@@ -354,6 +387,8 @@ static const bar_slot_t *bar_slots_for_mode(bar_mode_t mode) {
 // -1 (no highlight) also covers Transmit/Setup's blank landing state.
 static int active_bar_slot(void) {
     switch (s_bar_mode) {
+        case BAR_MONITOR:
+            return (s_active_monitor == MONITOR_HEALTH) ? 1 : -1;
         case BAR_TRANSMIT:
             if (s_active_transmit == TRANSMIT_MESSAGES) return 1;
             if (s_active_transmit == TRANSMIT_CONTROLS) return 2;
@@ -527,6 +562,21 @@ static void ui_shell_set_setup_tab(int tab) {
     configure_bottom_bar();
 }
 
+static void ui_shell_set_monitor_tab(int tab) {
+    s_active_monitor = tab;
+    for (int i = 0; i < MONITOR_TAB_COUNT; i++) {
+        if (i == s_active_monitor) lv_obj_remove_flag(s_monitor_pages[i], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(s_monitor_pages[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    if (s_monitor_blank) {
+        if (tab < 0) lv_obj_remove_flag(s_monitor_blank, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(s_monitor_blank, LV_OBJ_FLAG_HIDDEN);
+    }
+    refresh_title();
+    refresh_area(AREA_MONITOR);
+    configure_bottom_bar();
+}
+
 static void ui_shell_set_area(app_area_t area) {
     s_active_area = area;
     s_at_home = false;
@@ -672,9 +722,26 @@ void ui_shell_create(void) {
         lv_obj_set_style_radius(s_pages[i], 0, 0);
     }
 
-    lv_obj_set_flex_flow(s_pages[AREA_MONITOR], LV_FLEX_FLOW_COLUMN);
-    lv_obj_t *monitor_lbl = lv_label_create(s_pages[AREA_MONITOR]);
-    lv_label_set_text(monitor_lbl, "Monitor view coming soon");
+    // Monitor's Health sub-tab is selected via the bottom bar (BAR_MONITOR),
+    // same as Transmit's/Setup's leaves.
+    lv_obj_t *monitor_page = s_pages[AREA_MONITOR];
+    lv_obj_set_style_pad_all(monitor_page, 0, 0);
+
+    for (int i = 0; i < MONITOR_TAB_COUNT; i++) {
+        s_monitor_pages[i] = lv_obj_create(monitor_page);
+        lv_obj_set_size(s_monitor_pages[i], LV_PCT(100), LV_PCT(100));
+        lv_obj_set_style_pad_all(s_monitor_pages[i], 6, 0);
+        lv_obj_set_style_border_width(s_monitor_pages[i], 0, 0);
+    }
+
+    ui_monitor_create(s_monitor_pages[MONITOR_HEALTH]);
+
+    // Blank landing shown when Monitor is entered fresh (no sub-tab selected
+    // yet) — see ui_shell_set_monitor_tab(-1).
+    s_monitor_blank = lv_obj_create(monitor_page);
+    lv_obj_set_size(s_monitor_blank, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_pad_all(s_monitor_blank, 6, 0);
+    lv_obj_set_style_border_width(s_monitor_blank, 0, 0);
 
     // Transmit's Messages/Controls sub-tabs are selected via the bottom bar
     // (BAR_TRANSMIT) rather than an in-page tab row, so this is just a plain

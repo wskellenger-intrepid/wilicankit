@@ -83,6 +83,7 @@ add_executable(wilicankit
     ui_messages.c
     ui_transmit.c
     ui_controls.c
+    ui_monitor.c
     ui_shell.c
     storage.c
     storage_json.c

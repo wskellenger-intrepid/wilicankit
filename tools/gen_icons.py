@@ -41,9 +41,10 @@ ICONS = [
     ("delete", "trash"),
     ("new", "file-plus"),
     ("online", "wifi"),
+    ("health", "ambulance"),
 ]
 SIZE = 24
-OUT_PATH = "apps/wilicankit/ui_icons.c"
+OUT_PATH = "ui_icons.c"
 
 
 def alpha_bytes(src_name):

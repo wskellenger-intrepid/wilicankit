@@ -146,6 +146,32 @@ uint32_t can_link_dropped_frames(void) {
     return ow_fwgui_dropped_frames();
 }
 
+uint32_t can_link_tx_attempts(uint8_t msg_index) {
+    return (msg_index < CAN_MAX_MESSAGES) ? s_tx_attempts[msg_index] : 0;
+}
+
+uint32_t can_link_tx_ok(uint8_t msg_index) {
+    return (msg_index < CAN_MAX_MESSAGES) ? s_tx_ok[msg_index] : 0;
+}
+
+void can_link_health_stats(uint32_t *attempts, uint32_t *ok, int32_t *last_err) {
+    if (attempts) *attempts = s_health_attempts;
+    if (ok) *ok = s_health_ok;
+    if (last_err) *last_err = s_health_last_err;
+}
+
+uint8_t can_link_fault_streak(void) {
+    return s_consecutive_faults;
+}
+
+uint8_t can_link_fault_threshold(void) {
+    return CAN_LINK_OFFLINE_FAULT_THRESHOLD;
+}
+
+uint32_t can_link_rx_frames(void) {
+    return 0;
+}
+
 // ── TX stoppage attribution diagnostics: helpers ────────────────────────
 
 // Trivial, read-only, non-CAN OneWili call used purely as a link/MAIN

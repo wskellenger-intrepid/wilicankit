@@ -32,5 +32,6 @@ extern const lv_image_dsc_t ui_icon_save;        // tools/icon_src/device-floppy
 extern const lv_image_dsc_t ui_icon_delete;      // tools/icon_src/trash.png
 extern const lv_image_dsc_t ui_icon_new;         // tools/icon_src/file-plus.png
 extern const lv_image_dsc_t ui_icon_online;      // tools/icon_src/wifi.png
+extern const lv_image_dsc_t ui_icon_health;      // tools/icon_src/ambulance.png
 
 #endif // UI_ICONS_H
