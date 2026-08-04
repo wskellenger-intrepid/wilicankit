@@ -41,12 +41,22 @@ static void message_row_click_cb(lv_event_t *e) {
     open_message_form(idx);
 }
 
+static int cmp_message_name(const void *a, const void *b) {
+    return strcmp(g_messages[*(const uint8_t *)a].name, g_messages[*(const uint8_t *)b].name);
+}
+
 void ui_messages_refresh(void) {
     if (!s_list) return;
     lv_obj_clean(s_list);
     static char row_buf[64];
+    static uint8_t order[CAN_MAX_MESSAGES];
+    int n = 0;
     for (int i = 0; i < CAN_MAX_MESSAGES; i++) {
-        if (!g_messages[i].in_use) continue;
+        if (g_messages[i].in_use) order[n++] = (uint8_t)i;
+    }
+    qsort(order, n, sizeof(order[0]), cmp_message_name);
+    for (int k = 0; k < n; k++) {
+        int i = order[k];
         fmt_msg_row(row_buf, sizeof row_buf, &g_messages[i]);
         lv_obj_t *btn = lv_list_add_button(s_list, LV_SYMBOL_EDIT, row_buf);
         lv_obj_add_event_cb(btn, message_row_click_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);

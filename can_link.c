@@ -21,7 +21,7 @@ static bool s_online = false;
 // rejected send can be a transient bus blip (see 2026-08-03 findings doc),
 // so only a run of CAN_LINK_OFFLINE_FAULT_THRESHOLD in a row (no success in
 // between) actually drops us offline.
-#define CAN_LINK_OFFLINE_FAULT_THRESHOLD 15
+#define CAN_LINK_OFFLINE_FAULT_THRESHOLD 25
 static uint8_t s_consecutive_faults;
 static uint8_t s_max_consecutive_faults;   // highest streak ever seen, for diagnostics
 

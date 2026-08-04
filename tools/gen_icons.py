@@ -68,12 +68,13 @@ def main():
         "// A8 = alpha only (no color of its own); ui_shell.c tints these via",
         "// lv_obj_set_style_image_recolor()/_recolor_opa().",
         "#include \"ui_icons.h\"",
+        "#include \"pico/stdlib.h\"   // __in_psram, via pico/platform/sections.h",
         "",
     ]
 
     for var, src in ICONS:
         data = alpha_bytes(src)
-        lines.append(f"static const uint8_t icon_data_{var}[{len(data)}] = {{")
+        lines.append(f'static const uint8_t __in_psram("icons") icon_data_{var}[{len(data)}] = {{')
         for i in range(0, len(data), 16):
             row = ", ".join(str(b) for b in data[i:i + 16])
             lines.append(f"    {row},")

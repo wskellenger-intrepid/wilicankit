@@ -10,8 +10,9 @@
 // A8 = alpha only (no color of its own); ui_shell.c tints these via
 // lv_obj_set_style_image_recolor()/_recolor_opa().
 #include "ui_icons.h"
+#include "pico/stdlib.h"   // __in_psram, via pico/platform/sections.h
 
-static const uint8_t icon_data_monitor[576] = {
+static const uint8_t __in_psram("icons") icon_data_monitor[576] = {
     0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0,
@@ -50,7 +51,7 @@ static const uint8_t icon_data_monitor[576] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
 };
 
-static const uint8_t icon_data_transmit[576] = {
+static const uint8_t __in_psram("icons") icon_data_transmit[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -89,7 +90,7 @@ static const uint8_t icon_data_transmit[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 0, 0, 0,
 };
 
-static const uint8_t icon_data_diagnostics[576] = {
+static const uint8_t __in_psram("icons") icon_data_diagnostics[576] = {
     0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 0, 2, 2, 0,
     1, 0, 2, 2, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -128,7 +129,7 @@ static const uint8_t icon_data_diagnostics[576] = {
     0, 0, 2, 4, 1, 0, 0, 1, 4, 2, 0, 0, 0, 0, 0, 0,
 };
 
-static const uint8_t icon_data_setup[576] = {
+static const uint8_t __in_psram("icons") icon_data_setup[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 3, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 9, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -167,7 +168,7 @@ static const uint8_t icon_data_setup[576] = {
     0, 0, 3, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
-static const uint8_t icon_data_controls[576] = {
+static const uint8_t __in_psram("icons") icon_data_controls[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 1, 3, 0, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0,
@@ -206,7 +207,7 @@ static const uint8_t icon_data_controls[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0,
 };
 
-static const uint8_t icon_data_back[576] = {
+static const uint8_t __in_psram("icons") icon_data_back[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -245,7 +246,7 @@ static const uint8_t icon_data_back[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
-static const uint8_t icon_data_load[576] = {
+static const uint8_t __in_psram("icons") icon_data_load[576] = {
     0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 0, 0, 0, 0,
     0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -284,7 +285,7 @@ static const uint8_t icon_data_load[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
-static const uint8_t icon_data_signals[576] = {
+static const uint8_t __in_psram("icons") icon_data_signals[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -323,7 +324,7 @@ static const uint8_t icon_data_signals[576] = {
     0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
-static const uint8_t icon_data_messages[576] = {
+static const uint8_t __in_psram("icons") icon_data_messages[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0,
@@ -362,7 +363,7 @@ static const uint8_t icon_data_messages[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
-static const uint8_t icon_data_plus[576] = {
+static const uint8_t __in_psram("icons") icon_data_plus[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -401,7 +402,7 @@ static const uint8_t icon_data_plus[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
-static const uint8_t icon_data_save[576] = {
+static const uint8_t __in_psram("icons") icon_data_save[576] = {
     0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
@@ -440,7 +441,7 @@ static const uint8_t icon_data_save[576] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
 };
 
-static const uint8_t icon_data_delete[576] = {
+static const uint8_t __in_psram("icons") icon_data_delete[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 3,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
     0, 5, 16, 15, 16, 16, 5, 0, 1, 0, 0, 0, 0, 0, 0, 0,
@@ -479,7 +480,7 @@ static const uint8_t icon_data_delete[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 0, 0, 0, 0, 0,
 };
 
-static const uint8_t icon_data_new[576] = {
+static const uint8_t __in_psram("icons") icon_data_new[576] = {
     0, 0, 0, 0, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 16,
     16, 16, 16, 16, 15, 17, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0,
@@ -518,7 +519,7 @@ static const uint8_t icon_data_new[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 0, 0, 0, 0,
 };
 
-static const uint8_t icon_data_online[576] = {
+static const uint8_t __in_psram("icons") icon_data_online[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 1, 3, 4, 4, 3, 2, 0, 1, 1, 0, 1,
@@ -557,7 +558,7 @@ static const uint8_t icon_data_online[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
-static const uint8_t icon_data_offline[576] = {
+static const uint8_t __in_psram("icons") icon_data_offline[576] = {
     0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
     0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 2, 0, 0,
     0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -596,7 +597,7 @@ static const uint8_t icon_data_offline[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
 };
 
-static const uint8_t icon_data_health[576] = {
+static const uint8_t __in_psram("icons") icon_data_health[576] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

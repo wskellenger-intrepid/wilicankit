@@ -6,6 +6,7 @@
 #include "can_link.h"
 #include "pico/stdlib.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define SLIDER_RESOLUTION 1000
@@ -113,15 +114,30 @@ static void toggle_value_changed_cb(lv_event_t *e) {
     push_signal_updates(sig_id);
 }
 
+static int cmp_control_slider_first(const void *a, const void *b) {
+    uint8_t ia = *(const uint8_t *)a, ib = *(const uint8_t *)b;
+    if (g_controls[ia].control_type != g_controls[ib].control_type)
+        return (int)g_controls[ia].control_type - (int)g_controls[ib].control_type;
+    return strcmp(g_signals[g_controls[ia].signal_id].name, g_signals[g_controls[ib].signal_id].name);
+}
+
 void ui_controls_refresh(void) {
     if (!s_container) return;
     lv_obj_clean(s_container);
     static char buf[48];
-
+    static uint8_t order[CAN_MAX_CONTROLS];
+    int n = 0;
     for (int i = 0; i < CAN_MAX_CONTROLS; i++) {
         if (!g_controls[i].in_use) continue;
         uint8_t sig_id = g_controls[i].signal_id;
         if (sig_id == CAN_SIGNAL_ID_NONE || !g_signals[sig_id].in_use) continue;
+        order[n++] = (uint8_t)i;
+    }
+    qsort(order, n, sizeof(order[0]), cmp_control_slider_first);
+
+    for (int k = 0; k < n; k++) {
+        int i = order[k];
+        uint8_t sig_id = g_controls[i].signal_id;
         can_signal_t *sig = &g_signals[sig_id];
 
         lv_obj_t *card = lv_obj_create(s_container);
@@ -172,17 +188,24 @@ void ui_controls_refresh(void) {
 // Rebuilds the Add form's signal dropdown. For Add Toggle (`bit1_only`
 // true), only signals with bit_length == 1 are offered — a toggle only
 // makes sense for a 1-bit on/off signal.
+static int cmp_signal_name(const void *a, const void *b) {
+    return strcmp(g_signals[*(const uint8_t *)a].name, g_signals[*(const uint8_t *)b].name);
+}
+
 static void rebuild_signal_dropdown(bool bit1_only) {
     static char opts[CAN_MAX_SIGNALS * (CAN_SIGNAL_NAME_MAX + 1)];
-    opts[0] = '\0';
     int n = 0;
     for (int i = 0; i < CAN_MAX_SIGNALS; i++) {
         if (!g_signals[i].in_use) continue;
         if (bit1_only && g_signals[i].bit_length != 1) continue;
-        if (n > 0) strncat(opts, "\n", sizeof(opts) - strlen(opts) - 1);
-        strncat(opts, g_signals[i].name, sizeof(opts) - strlen(opts) - 1);
-        s_dd_signal_ids[n] = (uint8_t)i;
-        n++;
+        s_dd_signal_ids[n++] = (uint8_t)i;
+    }
+    qsort(s_dd_signal_ids, n, sizeof(s_dd_signal_ids[0]), cmp_signal_name);
+
+    opts[0] = '\0';
+    for (int k = 0; k < n; k++) {
+        if (k > 0) strncat(opts, "\n", sizeof(opts) - strlen(opts) - 1);
+        strncat(opts, g_signals[s_dd_signal_ids[k]].name, sizeof(opts) - strlen(opts) - 1);
     }
     if (n == 0) {
         strncpy(opts, bit1_only ? "(create a 1-bit signal first)" : "(create a signal first)",

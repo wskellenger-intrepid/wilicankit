@@ -6,6 +6,7 @@
 #include "can_link.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static lv_obj_t *s_container;
 
@@ -80,14 +81,24 @@ static void send_once_btn_cb(lv_event_t *e) {
     can_link_request_send_once((uint8_t)idx);
 }
 
+static int cmp_message_name(const void *a, const void *b) {
+    return strcmp(g_messages[*(const uint8_t *)a].name, g_messages[*(const uint8_t *)b].name);
+}
+
 void ui_transmit_refresh(void) {
     if (!s_container) return;
     lv_obj_clean(s_container);
     static char summary[80];
     static char period_ms_buf[16];
-
+    static uint8_t order[CAN_MAX_MESSAGES];
+    int msg_count = 0;
     for (int i = 0; i < CAN_MAX_MESSAGES; i++) {
-        if (!g_messages[i].in_use) continue;
+        if (g_messages[i].in_use) order[msg_count++] = (uint8_t)i;
+    }
+    qsort(order, msg_count, sizeof(order[0]), cmp_message_name);
+
+    for (int k = 0; k < msg_count; k++) {
+        int i = order[k];
         can_message_t *m = &g_messages[i];
 
         lv_obj_t *card = lv_obj_create(s_container);
