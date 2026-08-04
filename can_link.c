@@ -23,6 +23,7 @@ static bool s_online = false;
 // between) actually drops us offline.
 #define CAN_LINK_OFFLINE_FAULT_THRESHOLD 15
 static uint8_t s_consecutive_faults;
+static uint8_t s_max_consecutive_faults;   // highest streak ever seen, for diagnostics
 
 // Send-once is a counted, capped queue (not a bool): each button press is a
 // distinct user action and must produce its own frame, unlike the periodic
@@ -101,7 +102,8 @@ bool can_link_send_once(const can_message_t *msg, const can_signal_t *signals) {
                                             msg->extended_id ? 1 : 0, buf, msg->dlc);
     if (st != OW_OK) {
         DIAG("can_link: send_once failed, status %d\n", (int)st);
-        if (++s_consecutive_faults >= CAN_LINK_OFFLINE_FAULT_THRESHOLD) {
+        if (++s_consecutive_faults > s_max_consecutive_faults) s_max_consecutive_faults = s_consecutive_faults;
+        if (s_consecutive_faults >= CAN_LINK_OFFLINE_FAULT_THRESHOLD) {
             s_online = false;   // sustained failure means the bus is not healthy
             s_consecutive_faults = 0;
         }
@@ -162,6 +164,10 @@ void can_link_health_stats(uint32_t *attempts, uint32_t *ok, int32_t *last_err) 
 
 uint8_t can_link_fault_streak(void) {
     return s_consecutive_faults;
+}
+
+uint8_t can_link_max_fault_streak(void) {
+    return s_max_consecutive_faults;
 }
 
 uint8_t can_link_fault_threshold(void) {

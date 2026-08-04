@@ -133,8 +133,8 @@ void ui_monitor_refresh(void) {
     DRAW_LINE(online ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_RED),
               "Link: %s", online ? "Online" : "Offline");
 
-    DRAW_LINE(lv_color_white(), "Fault streak: %u/%u",
-              (unsigned)can_link_fault_streak(), (unsigned)can_link_fault_threshold());
+    DRAW_LINE(lv_color_white(), "Max fault streak: %u/%u",
+              (unsigned)can_link_max_fault_streak(), (unsigned)can_link_fault_threshold());
 
     uint32_t h_att, h_ok;
     int32_t h_err;

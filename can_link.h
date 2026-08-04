@@ -63,6 +63,8 @@ void can_link_health_stats(uint32_t *attempts, uint32_t *ok, int32_t *last_err);
 // Consecutive send-failure streak and the threshold that triggers
 // auto-offline (CAN_LINK_OFFLINE_FAULT_THRESHOLD) — see can_link_send_once().
 uint8_t can_link_fault_streak(void);
+// Highest streak value ever reached (persists across auto-offline resets).
+uint8_t can_link_max_fault_streak(void);
 uint8_t can_link_fault_threshold(void);
 
 // Placeholder: this app has no CAN RX path yet (display CPU has no native
