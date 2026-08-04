@@ -29,6 +29,10 @@ void ui_signals_add(void) {
     open_signal_form(-1);
 }
 
+static int cmp_signal_name(const void *a, const void *b) {
+    return strcmp(g_signals[*(const uint8_t *)a].name, g_signals[*(const uint8_t *)b].name);
+}
+
 void ui_signals_refresh(void) {
     if (!s_list) return;
     lv_obj_clean(s_list);
@@ -42,15 +46,7 @@ void ui_signals_refresh(void) {
     for (int i = 0; i < CAN_MAX_SIGNALS; i++) {
         if (g_signals[i].in_use) idxs[n++] = (uint8_t)i;
     }
-    for (int i = 1; i < n; i++) {
-        uint8_t key = idxs[i];
-        int j = i - 1;
-        while (j >= 0 && strcmp(g_signals[idxs[j]].name, g_signals[key].name) > 0) {
-            idxs[j + 1] = idxs[j];
-            j--;
-        }
-        idxs[j + 1] = key;
-    }
+    qsort(idxs, n, sizeof(idxs[0]), cmp_signal_name);
 
     for (int k = 0; k < n; k++) {
         int i = idxs[k];
