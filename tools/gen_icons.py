@@ -40,7 +40,8 @@ ICONS = [
     ("save", "device-floppy"),
     ("delete", "trash"),
     ("new", "file-plus"),
-    ("online", "wifi"),
+    ("online", "plug-connected"),
+    ("offline", "plug-off"),
     ("health", "ambulance"),
 ]
 SIZE = 24

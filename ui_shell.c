@@ -130,8 +130,7 @@ static lv_obj_t *s_bar_labels[5];
 // blank/disabled in BAR_SETUP — kept as separate names since style_online_btn
 // predates this and is also called from ui_shell_poll().
 static lv_obj_t *s_online_btn;
-static lv_obj_t *s_online_lbl;
-
+static lv_obj_t *s_online_lbl;static lv_obj_t *s_online_icon;
 // Hidden-by-default layer (a child of `content`, so it covers only the
 // content area — the app bar and bottom bar stay put) holding every
 // add/edit-form and confirm screen as its own children, each a full-size
@@ -220,6 +219,7 @@ static void style_online_btn(void) {
     bool online = can_link_is_online();
     s_last_online = online;
     lv_label_set_text(s_online_lbl, online ? "Online" : "Offline");
+    lv_image_set_src(s_online_icon, online ? &ui_icon_online : &ui_icon_offline);
     lv_obj_set_style_bg_color(s_online_btn,
         online ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_RED), 0);
     lv_obj_set_style_text_color(s_online_btn, lv_color_white(), 0);
@@ -826,6 +826,7 @@ void ui_shell_create(void) {
     // configure_bottom_bar() blanks/disables it.
     s_online_btn = s_bar_btns[4];
     s_online_lbl = s_bar_labels[4];
+    s_online_icon = s_bar_icons[4];
 
     // Boot lands on the blank Home page with the blank Transmit/Setup
     // landings behind it and the full BAR_TOP tile bar — see go_home().

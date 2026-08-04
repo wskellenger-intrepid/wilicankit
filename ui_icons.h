@@ -31,7 +31,8 @@ extern const lv_image_dsc_t ui_icon_plus;        // tools/icon_src/plus.png
 extern const lv_image_dsc_t ui_icon_save;        // tools/icon_src/device-floppy.png
 extern const lv_image_dsc_t ui_icon_delete;      // tools/icon_src/trash.png
 extern const lv_image_dsc_t ui_icon_new;         // tools/icon_src/file-plus.png
-extern const lv_image_dsc_t ui_icon_online;      // tools/icon_src/wifi.png
+extern const lv_image_dsc_t ui_icon_online;      // tools/icon_src/plug-connected.png
+extern const lv_image_dsc_t ui_icon_offline;     // tools/icon_src/plug-off.png
 extern const lv_image_dsc_t ui_icon_health;      // tools/icon_src/ambulance.png
 
 #endif // UI_ICONS_H
