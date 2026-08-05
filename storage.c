@@ -1,10 +1,11 @@
-// apps/wilicankit/storage.c — see storage.h. FatFs I/O + a PSRAM-backed
-// bump allocator for cJSON; struct<->JSON encode/decode itself lives in
-// storage_json.c.
+// apps/wilicankit/storage.c — see storage.h. FatFs (USB) / OneWili SDFS (SD)
+// I/O + a PSRAM-backed bump allocator for cJSON; struct<->JSON encode/decode
+// itself lives in storage_json.c.
 #include "storage.h"
 #include "storage_json.h"
 #include "app_state.h"
 #include "ff.h"
+#include "onewili_sd.h"
 #include "cJSON.h"
 #include "pico/stdlib.h"   // __uninitialized_psram, via pico/platform/sections.h
 #include "platform/diag.h"
@@ -39,11 +40,50 @@ static void *json_arena_alloc(size_t sz) {
 
 static void json_arena_reset(void) { s_json_arena_used = 0; }
 
+static storage_backend_t s_backend = STORAGE_BACKEND_SD;
+
+void storage_set_backend(storage_backend_t backend) { s_backend = backend; }
+storage_backend_t storage_get_backend(void) { return s_backend; }
+
+bool storage_sd_available(void) {
+    bool is_dir = false;
+    uint32_t size = 0;
+    return ow_sd_stat(NULL, "/appdata", &is_dir, &size) == OW_OK && is_dir;
+}
+
 static void build_path(char *out, size_t cap, const char *name) {
-    snprintf(out, cap, "%s/%s.json", STORAGE_DIR, name);
+    const char *dir = (s_backend == STORAGE_BACKEND_SD) ? SD_STORAGE_DIR : STORAGE_DIR;
+    snprintf(out, cap, "%s/%s.json", dir, name);
+}
+
+// ow_sd_list callback: collect ".json" entries the same way the FatFs loop
+// below does, ignoring directories.
+typedef struct {
+    char (*names)[STORAGE_NAME_MAX];
+    int  max_names;
+    int  count;
+} sd_list_ctx_t;
+
+static void sd_list_cb(const char *name, bool is_dir, uint32_t size, void *user) {
+    (void)size;
+    sd_list_ctx_t *ctx = (sd_list_ctx_t *)user;
+    if (is_dir || ctx->count >= ctx->max_names) return;
+    size_t len = strlen(name);
+    if (len > 5 && strcasecmp(name + len - 5, ".json") == 0) {
+        size_t copy_len = len - 5;
+        if (copy_len >= STORAGE_NAME_MAX) copy_len = STORAGE_NAME_MAX - 1;
+        memcpy(ctx->names[ctx->count], name, copy_len);
+        ctx->names[ctx->count][copy_len] = '\0';
+        ctx->count++;
+    }
 }
 
 int storage_list_configs(char names[][STORAGE_NAME_MAX], int max_names) {
+    if (s_backend == STORAGE_BACKEND_SD) {
+        sd_list_ctx_t ctx = { names, max_names, 0 };
+        if (ow_sd_list(NULL, SD_STORAGE_DIR, sd_list_cb, &ctx) != OW_OK) return 0;
+        return ctx.count;
+    }
     DIR dir;
     FILINFO fi;
     int n = 0;
@@ -66,14 +106,24 @@ int storage_list_configs(char names[][STORAGE_NAME_MAX], int max_names) {
 bool storage_config_exists(const char *name) {
     static char path[64];
     build_path(path, sizeof path, name);
+    if (s_backend == STORAGE_BACKEND_SD) {
+        bool is_dir = false;
+        uint32_t size = 0;
+        return ow_sd_stat(NULL, path, &is_dir, &size) == OW_OK && !is_dir;
+    }
     FILINFO fi;
     return f_stat(path, &fi) == FR_OK;
 }
 
 bool storage_save_config(const char *name) {
-    f_mkdir(STORAGE_DIR);   // FR_EXIST is fine, ignore the return value
     static char path[64];
     build_path(path, sizeof path, name);
+    if (s_backend == STORAGE_BACKEND_SD) {
+        ow_sd_mkdir(NULL, "/appdata");     // FR_EXIST-equivalent is fine, ignore
+        ow_sd_mkdir(NULL, SD_STORAGE_DIR);
+    } else {
+        f_mkdir(STORAGE_DIR);   // FR_EXIST is fine, ignore the return value
+    }
 
     json_arena_reset();
     cJSON_Hooks hooks = { .malloc_fn = json_arena_alloc, .free_fn = json_arena_free };
@@ -92,14 +142,19 @@ bool storage_save_config(const char *name) {
 
     bool ok = false;
     if (printed) {
-        FIL f;
-        if (f_open(&f, path, FA_CREATE_ALWAYS | FA_WRITE) == FR_OK) {
-            UINT written;
-            UINT len = (UINT)strlen(s_json_text);
-            ok = f_write(&f, s_json_text, len, &written) == FR_OK && written == len;
-            f_close(&f);
+        size_t len = strlen(s_json_text);
+        if (s_backend == STORAGE_BACKEND_SD) {
+            ok = ow_sd_put_mem(NULL, path, s_json_text, len, false) == OW_OK;
+            if (!ok) DIAG("storage: sd write failed: %s\n", path);
         } else {
-            DIAG("storage: open for write failed: %s\n", path);
+            FIL f;
+            if (f_open(&f, path, FA_CREATE_ALWAYS | FA_WRITE) == FR_OK) {
+                UINT written;
+                ok = f_write(&f, s_json_text, (UINT)len, &written) == FR_OK && written == len;
+                f_close(&f);
+            } else {
+                DIAG("storage: open for write failed: %s\n", path);
+            }
         }
     }
     if (root) cJSON_Delete(root);
@@ -113,24 +168,32 @@ bool storage_load_config(const char *name) {
     static char path[64];
     build_path(path, sizeof path, name);
 
-    FIL f;
-    if (f_open(&f, path, FA_READ) != FR_OK) {
-        DIAG("storage: open for read failed: %s\n", path);
-        return false;
-    }
-    FSIZE_t size = f_size(&f);
-    if (size == 0 || size >= STORAGE_JSON_MAX_BYTES) {
-        DIAG("storage: file empty or too large: %s\n", path);
+    size_t size = 0;
+    if (s_backend == STORAGE_BACKEND_SD) {
+        if (ow_sd_get_mem(NULL, path, s_json_text, STORAGE_JSON_MAX_BYTES - 1, &size) != OW_OK || size == 0) {
+            DIAG("storage: sd read failed: %s\n", path);
+            return false;
+        }
+    } else {
+        FIL f;
+        if (f_open(&f, path, FA_READ) != FR_OK) {
+            DIAG("storage: open for read failed: %s\n", path);
+            return false;
+        }
+        FSIZE_t fsize = f_size(&f);
+        if (fsize == 0 || fsize >= STORAGE_JSON_MAX_BYTES) {
+            DIAG("storage: file empty or too large: %s\n", path);
+            f_close(&f);
+            return false;
+        }
+        UINT rd;
+        bool read_ok = f_read(&f, s_json_text, (UINT)fsize, &rd) == FR_OK && rd == fsize;
         f_close(&f);
-        return false;
-    }
-
-    UINT rd;
-    bool ok = f_read(&f, s_json_text, (UINT)size, &rd) == FR_OK && rd == size;
-    f_close(&f);
-    if (!ok) {
-        DIAG("storage: read failed: %s\n", path);
-        return false;
+        if (!read_ok) {
+            DIAG("storage: read failed: %s\n", path);
+            return false;
+        }
+        size = fsize;
     }
     s_json_text[size] = '\0';
 
@@ -138,14 +201,14 @@ bool storage_load_config(const char *name) {
     cJSON_Hooks hooks = { .malloc_fn = json_arena_alloc, .free_fn = json_arena_free };
     cJSON_InitHooks(&hooks);
 
-    cJSON *root = cJSON_ParseWithLength(s_json_text, (size_t)size);
+    cJSON *root = cJSON_ParseWithLength(s_json_text, size);
 
     // Decode into scratch first — a truncated/malformed file must not
     // partially clobber the live tables.
     static can_signal_t  __uninitialized_psram("wilicankit_tmp_signals")  tmp_signals[CAN_MAX_SIGNALS];
     static can_message_t __uninitialized_psram("wilicankit_tmp_messages") tmp_messages[CAN_MAX_MESSAGES];
     static can_control_t __uninitialized_psram("wilicankit_tmp_controls") tmp_controls[CAN_MAX_CONTROLS];
-    ok = root && storage_parse_json(root, tmp_signals, tmp_messages, tmp_controls);
+    bool ok = root && storage_parse_json(root, tmp_signals, tmp_messages, tmp_controls);
 
     if (root) cJSON_Delete(root);
     cJSON_InitHooks(NULL);
@@ -163,5 +226,6 @@ bool storage_load_config(const char *name) {
 bool storage_delete_config(const char *name) {
     static char path[64];
     build_path(path, sizeof path, name);
+    if (s_backend == STORAGE_BACKEND_SD) return ow_sd_remove(NULL, path) == OW_OK;
     return f_unlink(path) == FR_OK;
 }

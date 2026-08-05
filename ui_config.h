@@ -1,6 +1,7 @@
 // apps/wilicankit/ui_config.h — Config tab: New (reset to blank) / Save As
-// (name via keyboard) over an lv_file_explorer browsing the saved configs
-// on the USB stick — tap a file to Load, or use the Delete toolbar button.
+// (name via keyboard) over the saved configs on either the SD card (default,
+// a flat lv_list -- see ui_config.c) or the USB stick (lv_file_explorer) --
+// tap an entry to Load, or use the Delete toolbar button.
 #ifndef WILICANKIT_UI_CONFIG_H
 #define WILICANKIT_UI_CONFIG_H
 #include "lvgl.h"

@@ -9,6 +9,7 @@
 #include "ui_controls.h"
 #include "can_link.h"
 #include "app_state.h"
+#include "pico/stdlib.h"   // __uninitialized_psram, via pico/platform/sections.h
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -20,6 +21,20 @@
 
 static lv_obj_t *s_explorer;
 static lv_obj_t *s_status_lbl;
+static lv_obj_t *s_backend_dd;
+static lv_obj_t *s_sd_list;
+
+// Config names currently shown in s_sd_list, indexed the same as its rows —
+// row click handlers get only an index (lv_event user_data), so this is what
+// they look the name back up in.
+#define SD_LIST_MAX 32
+static char __uninitialized_psram("wilicankit_sd_names") s_sd_names[SD_LIST_MAX][STORAGE_NAME_MAX];
+
+// Name of the last-tapped SD row, or "" if none yet this session -- SD has
+// no persistent widget selection like lv_file_explorer, so Delete needs its
+// own memory of "whatever was last loaded" (mirrors the USB explorer's own
+// selection-based Delete UX).
+static char s_sd_selected_name[STORAGE_NAME_MAX] = "";
 
 // Shared state for the "are you sure?" confirm screen (ui_common_show_confirm)
 // — reused for Delete, New, and Save-As-over-an-existing-file; only one of
@@ -60,19 +75,36 @@ static bool explorer_at_config_root(void) {
     return strcmp(lv_file_explorer_get_current_path(s_explorer), CONFIG_FS_ROOT "/") == 0;
 }
 
+// Repopulates s_sd_list from storage_list_configs() -- called on Config-tab
+// nav-in and after any Save/Delete while the SD backend is active.
+static void sd_row_click_cb(lv_event_t *e);
+
+static void sd_list_refresh(void) {
+    lv_obj_clean(s_sd_list);
+    int n = storage_list_configs(s_sd_names, SD_LIST_MAX);
+    for (int i = 0; i < n; i++) {
+        lv_obj_t *btn = lv_list_add_button(s_sd_list, LV_SYMBOL_FILE, s_sd_names[i]);
+        lv_obj_add_event_cb(btn, sd_row_click_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+}
+
 void ui_config_refresh(void) {
+    if (storage_get_backend() == STORAGE_BACKEND_SD) {
+        if (!s_sd_list) return;
+        if (storage_sd_available()) {
+            sd_list_refresh();
+        } else {
+            lv_obj_clean(s_sd_list);
+            lv_label_set_text(s_status_lbl, "SD card not available");
+        }
+        return;
+    }
     if (!s_explorer) return;
     lv_file_explorer_open_dir(s_explorer, CONFIG_FS_ROOT);
 }
 
-static void explorer_file_selected_cb(lv_event_t *e) {
-    (void)e;
-    if (!explorer_at_config_root()) {
-        lv_label_set_text(s_status_lbl, "Only files under wilicankit/ can be loaded");
-        return;
-    }
-    char name[STORAGE_NAME_MAX];
-    strip_json_ext(lv_file_explorer_get_selected_file_name(s_explorer), name, sizeof name);
+// Shared by both backends' "tap to load" handlers below.
+static void load_and_apply(const char *name) {
     bool ok = storage_load_config(name);
     lv_label_set_text_fmt(s_status_lbl, ok ? "Loaded '%s'" : "Load failed: '%s'", name);
     if (ok) {
@@ -87,6 +119,24 @@ static void explorer_file_selected_cb(lv_event_t *e) {
     }
 }
 
+static void explorer_file_selected_cb(lv_event_t *e) {
+    (void)e;
+    if (!explorer_at_config_root()) {
+        lv_label_set_text(s_status_lbl, "Only files under wilicankit/ can be loaded");
+        return;
+    }
+    char name[STORAGE_NAME_MAX];
+    strip_json_ext(lv_file_explorer_get_selected_file_name(s_explorer), name, sizeof name);
+    load_and_apply(name);
+}
+
+static void sd_row_click_cb(lv_event_t *e) {
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    strncpy(s_sd_selected_name, s_sd_names[idx], sizeof s_sd_selected_name - 1);
+    s_sd_selected_name[sizeof s_sd_selected_name - 1] = '\0';
+    load_and_apply(s_sd_selected_name);
+}
+
 static void do_delete_confirmed(void *user_data) {
     (void)user_data;
     bool ok = storage_delete_config(s_confirm_name);
@@ -97,16 +147,25 @@ static void do_delete_confirmed(void *user_data) {
 
 static void delete_btn_cb(lv_event_t *e) {
     (void)e;
-    if (!explorer_at_config_root()) {
-        lv_label_set_text(s_status_lbl, "Only files under wilicankit/ can be deleted");
-        return;
+    if (storage_get_backend() == STORAGE_BACKEND_SD) {
+        if (s_sd_selected_name[0] == '\0') {
+            lv_label_set_text(s_status_lbl, "Tap a config first, then Delete");
+            return;
+        }
+        strncpy(s_confirm_name, s_sd_selected_name, sizeof s_confirm_name - 1);
+        s_confirm_name[sizeof s_confirm_name - 1] = '\0';
+    } else {
+        if (!explorer_at_config_root()) {
+            lv_label_set_text(s_status_lbl, "Only files under wilicankit/ can be deleted");
+            return;
+        }
+        const char *fname = lv_file_explorer_get_selected_file_name(s_explorer);
+        if (!fname || fname[0] == '\0') {
+            lv_label_set_text(s_status_lbl, "Tap a file first, then Delete");
+            return;
+        }
+        strip_json_ext(fname, s_confirm_name, sizeof s_confirm_name);
     }
-    const char *fname = lv_file_explorer_get_selected_file_name(s_explorer);
-    if (!fname || fname[0] == '\0') {
-        lv_label_set_text(s_status_lbl, "Tap a file first, then Delete");
-        return;
-    }
-    strip_json_ext(fname, s_confirm_name, sizeof s_confirm_name);
     snprintf(s_confirm_msg, sizeof s_confirm_msg, "Delete '%s'? This cannot be undone.", s_confirm_name);
     ui_common_show_confirm(s_confirm_msg, "Delete", do_delete_confirmed, NULL);
 }
@@ -178,8 +237,43 @@ static void save_as_btn_cb(lv_event_t *e) {
 
 void ui_config_save_as(void) { save_as_btn_cb(NULL); }
 
+// Storage dropdown changed: switch the active backend, clear the "currently
+// loaded" name (it belonged to the old backend's files), swap which list is
+// visible, and refresh it.
+static void backend_dropdown_cb(lv_event_t *e) {
+    uint16_t sel = lv_dropdown_get_selected(lv_event_get_target(e));
+    storage_backend_t backend = (sel == 0) ? STORAGE_BACKEND_SD : STORAGE_BACKEND_USB;
+    storage_set_backend(backend);
+    s_current_config_name[0] = '\0';
+    s_sd_selected_name[0] = '\0';
+    lv_label_set_text(s_status_lbl, "");
+    if (backend == STORAGE_BACKEND_SD) {
+        lv_obj_add_flag(s_explorer, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(s_sd_list, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_clear_flag(s_explorer, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_sd_list, LV_OBJ_FLAG_HIDDEN);
+    }
+    ui_config_refresh();
+}
+
 lv_obj_t *ui_config_create(lv_obj_t *parent) {
     lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
+
+    lv_obj_t *backend_row = lv_obj_create(parent);
+    lv_obj_set_size(backend_row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_border_width(backend_row, 0, 0);
+    lv_obj_set_style_pad_all(backend_row, 0, 0);
+    lv_obj_set_flex_flow(backend_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(backend_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *backend_lbl = lv_label_create(backend_row);
+    lv_label_set_text(backend_lbl, "Storage:");
+
+    s_backend_dd = lv_dropdown_create(backend_row);
+    lv_dropdown_set_options(s_backend_dd, "SD card\nUSB stick");
+    lv_dropdown_set_selected(s_backend_dd, 0);   // SD is the default backend
+    lv_obj_add_event_cb(s_backend_dd, backend_dropdown_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     s_status_lbl = lv_label_create(parent);
     lv_label_set_text(s_status_lbl, "");
@@ -189,6 +283,18 @@ lv_obj_t *ui_config_create(lv_obj_t *parent) {
     lv_obj_set_flex_grow(s_explorer, 1);
     lv_obj_add_event_cb(s_explorer, explorer_file_selected_cb, LV_EVENT_VALUE_CHANGED, NULL);
     lv_file_explorer_open_dir(s_explorer, CONFIG_FS_ROOT);
+    lv_obj_add_flag(s_explorer, LV_OBJ_FLAG_HIDDEN);   // SD is the default backend
+
+    s_sd_list = lv_list_create(parent);
+    lv_obj_set_width(s_sd_list, LV_PCT(100));
+    lv_obj_set_flex_grow(s_sd_list, 1);
+
+    // Deliberately no storage_sd_available() probe here: ui_config_create()
+    // runs from ui_shell_create(), which is called before can_link_open()
+    // (see main.c) -- the FwGUI link the SD probe needs isn't armed yet.
+    // ui_config_refresh() (fired on Config-tab nav-in, well after boot) does
+    // the actual probe.
+    storage_set_backend(STORAGE_BACKEND_SD);
 
     s_save_page = lv_obj_create(ui_shell_overlay());
     lv_obj_set_size(s_save_page, LV_PCT(100), LV_PCT(100));
