@@ -10,6 +10,8 @@
 #include "hardware/gpio.h"
 #include "hardware/irq.h"
 #include "hardware/resets.h"
+#include "hardware/structs/qmi.h"
+#include "hardware/vreg.h"
 #include "pico/runtime.h"
 #include "pico/runtime_init.h"
 #include "pico/stdlib.h"
@@ -65,12 +67,36 @@ static void psram_stub_irq_handover(void) {
 }
 PICO_RUNTIME_INIT_FUNC_RUNTIME(psram_stub_irq_handover, PICO_RUNTIME_INIT_EARLIEST);
 
+// Fields common to the 150 and 200 MHz APS6404L timings. MIN_DESELECT counts
+// clk_sys periods with one implied, so 3 holds CS# high 20 ns at 200 MHz,
+// clearing the 18 ns tCPH minimum (and 26.7 ns at 150 MHz).
+#define QMI_M1_TIMING_BASE (                                                   \
+      ((uint32_t)1u << QMI_M1_TIMING_COOLDOWN_LSB)                             \
+    | ((uint32_t)QMI_M1_TIMING_PAGEBREAK_VALUE_1024 << QMI_M1_TIMING_PAGEBREAK_LSB) \
+    | ((uint32_t)3u << QMI_M1_TIMING_MIN_DESELECT_LSB)                         \
+    | ((uint32_t)2u << QMI_M1_TIMING_RXDELAY_LSB)                              \
+    | ((uint32_t)2u << QMI_M1_TIMING_CLKDIV_LSB))
+
+// The loader hands apps over at the SDK default 150 MHz. Raising clk_sys
+// shortens SCK and CS# high time the instant it takes effect, so the QMI window
+// this code fetches instructions from would be out of spec between the clock
+// change and the re-time. MAX_SELECT counts 64 clk_sys periods against an 8 us
+// tCEM, which allows 18 at 150 MHz and 25 at 200 — so 18 is legal at both, and
+// pre-loading it means there is never an invalid window to run through.
+static void psram_clock_raise_200(void) {
+    vreg_set_voltage(VREG_VOLTAGE_1_25);
+    sleep_ms(10);
+
+    qmi_hw->m[1].timing = QMI_M1_TIMING_BASE | (18u << QMI_M1_TIMING_MAX_SELECT_LSB);
+    set_sys_clock_khz(200000, true);
+    qmi_hw->m[1].timing = QMI_M1_TIMING_BASE | (25u << QMI_M1_TIMING_MAX_SELECT_LSB);
+}
+
 // Mirrors wilibsp's board_init_clk() with its clock/PSRAM prologue removed.
-// This app executes from PSRAM, so it must not raise clk_sys (that invalidates
-// the QMI M1 timing of the window it is fetching instructions from) and must
-// not call psram_reinitialize() (documented unsafe from PSRAM, and the loader's
-// stub has already configured the chip). Everything below is the tail of
-// board_init_clk() verbatim; it belongs upstream in wilibsp eventually.
+// psram_clock_raise_200() above already handled clk_sys, and psram_reinitialize()
+// is documented unsafe from PSRAM (the loader's stub configured the chip).
+// Everything below is the tail of board_init_clk() verbatim; it belongs upstream
+// in wilibsp eventually.
 static void board_init_psram_resident(void) {
     uint32_t f = clock_get_hz(clk_sys);
     clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS, f, f);
@@ -90,6 +116,8 @@ static void board_init_psram_resident(void) {
 }
 
 int main(void) {
+    // Before board init: clk_peri and the SPI baud rates derive from clk_sys.
+    psram_clock_raise_200();
     board_init_psram_resident();
     DIAG("wilicankit: PSRAM-resident, clk_sys=%u Hz\n", clock_get_hz(clk_sys));
     st7796_init();
