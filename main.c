@@ -15,7 +15,9 @@
 #include "app_state.h"
 
 int main(void) {
-    board_init();
+    // 200 MHz, not the board default 250: matches Fw2Display, whose hardware-
+    // validated QMI M1 timing is the only PSRAM recipe proven at a raised clock.
+    board_init_clk(200000);
     st7796_init();
     board_backlight_set(1);
     ft6336_init();

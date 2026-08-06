@@ -19,6 +19,7 @@
 #define ROW_BTN_H 34
 
 static lv_obj_t *s_container;
+static lv_obj_t *s_hdr;                   // first child of s_container; survives refresh
 static lv_obj_t *s_form_page;
 static lv_obj_t *s_dd_signal;
 static lv_obj_t *s_all_sine_btn;
@@ -180,6 +181,7 @@ static void exercise_tick_cb(lv_timer_t *timer) {
     uint32_t card_count = lv_obj_get_child_count(s_container);
     for (uint32_t c = 0; c < card_count; c++) {
         lv_obj_t *card = lv_obj_get_child(s_container, c);
+        if (card == s_hdr) continue;
         int idx = (int)(intptr_t)lv_obj_get_user_data(card);
         if (idx < 0 || idx >= CAN_MAX_CONTROLS || !g_controls[idx].in_use) continue;
 
@@ -226,7 +228,11 @@ static int cmp_control_slider_first(const void *a, const void *b) {
 
 void ui_controls_refresh(void) {
     if (!s_container) return;
-    lv_obj_clean(s_container);
+    // Not lv_obj_clean(): the header row is a child too and must survive.
+    for (int32_t c = (int32_t)lv_obj_get_child_count(s_container) - 1; c >= 0; c--) {
+        lv_obj_t *child = lv_obj_get_child(s_container, (uint32_t)c);
+        if (child != s_hdr) lv_obj_delete(child);
+    }
     static char buf[48];
     static uint8_t order[CAN_MAX_CONTROLS];
     int n = 0;
@@ -410,22 +416,22 @@ static lv_obj_t *create_all_btn(lv_obj_t *parent, const void *icon, const char *
 lv_obj_t *ui_controls_create(lv_obj_t *parent) {
     lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
 
-    lv_obj_t *hdr = lv_obj_create(parent);
-    lv_obj_set_width(hdr, LV_PCT(100));
-    lv_obj_set_height(hdr, LV_SIZE_CONTENT);
-    lv_obj_set_style_border_width(hdr, 0, 0);
-    lv_obj_set_style_pad_all(hdr, 4, 0);
-    lv_obj_set_style_pad_column(hdr, 8, 0);
-    lv_obj_set_flex_flow(hdr, LV_FLEX_FLOW_ROW);
-    lv_obj_remove_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
-    s_all_sine_btn = create_all_btn(hdr, &ui_icon_sine, "All Sine", all_sine_btn_cb);
-    s_all_random_btn = create_all_btn(hdr, NULL, LV_SYMBOL_SHUFFLE "  All Random", all_random_btn_cb);
-
     s_container = lv_obj_create(parent);
     lv_obj_set_width(s_container, LV_PCT(100));
     lv_obj_set_flex_grow(s_container, 1);
     lv_obj_set_flex_flow(s_container, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(s_container, 4, 0);
+
+    s_hdr = lv_obj_create(s_container);
+    lv_obj_set_width(s_hdr, LV_PCT(100));
+    lv_obj_set_height(s_hdr, LV_SIZE_CONTENT);
+    lv_obj_set_style_border_width(s_hdr, 0, 0);
+    lv_obj_set_style_pad_all(s_hdr, 4, 0);
+    lv_obj_set_style_pad_column(s_hdr, 8, 0);
+    lv_obj_set_flex_flow(s_hdr, LV_FLEX_FLOW_ROW);
+    lv_obj_remove_flag(s_hdr, LV_OBJ_FLAG_SCROLLABLE);
+    s_all_sine_btn = create_all_btn(s_hdr, &ui_icon_sine, "All Sine", all_sine_btn_cb);
+    s_all_random_btn = create_all_btn(s_hdr, NULL, LV_SYMBOL_SHUFFLE "  All Random", all_random_btn_cb);
 
     s_form_page = lv_obj_create(ui_shell_overlay());
     lv_obj_set_size(s_form_page, LV_PCT(100), LV_PCT(100));
