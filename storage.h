@@ -39,6 +39,11 @@ int storage_list_configs(char names[][STORAGE_NAME_MAX], int max_names);
 // confirm overwrite before a Save As over an existing file).
 bool storage_config_exists(const char *name);
 
+// True if `name` is a non-empty, FAT32-safe file name: fits within
+// STORAGE_NAME_MAX, has no path separators/control chars/other characters
+// FAT32 forbids in a name, and doesn't end in a space or dot.
+bool storage_name_is_valid(const char *name);
+
 // Saves the current g_signals/g_messages/g_controls tables (see app_state.h)
 // as "<name>.json" under the active backend's config dir. Creates the dir
 // if needed.

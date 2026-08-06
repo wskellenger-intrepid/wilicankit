@@ -53,7 +53,20 @@ bool storage_sd_available(void) {
 
 static void build_path(char *out, size_t cap, const char *name) {
     const char *dir = (s_backend == STORAGE_BACKEND_SD) ? SD_STORAGE_DIR : STORAGE_DIR;
-    snprintf(out, cap, "%s/%s.json", dir, name);
+    size_t len = strlen(name);
+    bool has_ext = len > 5 && strcasecmp(name + len - 5, ".json") == 0;
+    snprintf(out, cap, has_ext ? "%s/%s" : "%s/%s.json", dir, name);
+}
+
+bool storage_name_is_valid(const char *name) {
+    size_t len = strlen(name);
+    if (len == 0 || len >= STORAGE_NAME_MAX) return false;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)name[i];
+        if (c < 0x20 || strchr("\\/:*?\"<>|", (char)c)) return false;   // FAT32-illegal/control chars
+    }
+    if (name[len - 1] == ' ' || name[len - 1] == '.') return false;   // FAT32 silently strips these, inviting mismatches
+    return true;
 }
 
 // ow_sd_list callback: collect ".json" entries the same way the FatFs loop
@@ -116,6 +129,10 @@ bool storage_config_exists(const char *name) {
 }
 
 bool storage_save_config(const char *name) {
+    if (!storage_name_is_valid(name)) {
+        DIAG("storage: invalid config name: %s\n", name);
+        return false;
+    }
     static char path[64];
     build_path(path, sizeof path, name);
     if (s_backend == STORAGE_BACKEND_SD) {

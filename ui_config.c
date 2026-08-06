@@ -66,6 +66,14 @@ static void strip_json_ext(const char *fname, char *out, size_t out_cap) {
     out[len] = '\0';
 }
 
+// Formats `name` for display as "<name>.json" without doubling the
+// extension if it's already present (mirrors storage.c's build_path).
+static void with_json_ext(const char *name, char *out, size_t out_cap) {
+    size_t len = strlen(name);
+    bool has_ext = len > 5 && strcasecmp(name + len - 5, ".json") == 0;
+    snprintf(out, out_cap, has_ext ? "%s" : "%s.json", name);
+}
+
 // True if the explorer is currently showing our config folder — guards
 // Load/Delete against a user who navigated ".." out of it: storage.h's
 // load/delete/exists calls are always relative to STORAGE_DIR, so acting on
@@ -83,7 +91,9 @@ static void sd_list_refresh(void) {
     lv_obj_clean(s_sd_list);
     int n = storage_list_configs(s_sd_names, SD_LIST_MAX);
     for (int i = 0; i < n; i++) {
-        lv_obj_t *btn = lv_list_add_button(s_sd_list, LV_SYMBOL_FILE, s_sd_names[i]);
+        char label[STORAGE_NAME_MAX + 5];
+        with_json_ext(s_sd_names[i], label, sizeof label);
+        lv_obj_t *btn = lv_list_add_button(s_sd_list, LV_SYMBOL_FILE, label);
         lv_obj_add_event_cb(btn, sd_row_click_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
 }
@@ -106,7 +116,9 @@ void ui_config_refresh(void) {
 // Shared by both backends' "tap to load" handlers below.
 static void load_and_apply(const char *name) {
     bool ok = storage_load_config(name);
-    lv_label_set_text_fmt(s_status_lbl, ok ? "Loaded '%s'" : "Load failed: '%s'", name);
+    char disp[STORAGE_NAME_MAX + 5];
+    with_json_ext(name, disp, sizeof disp);
+    lv_label_set_text_fmt(s_status_lbl, ok ? "Loaded '%s'" : "Load failed: '%s'", disp);
     if (ok) {
         strncpy(s_current_config_name, name, sizeof s_current_config_name - 1);
         s_current_config_name[sizeof s_current_config_name - 1] = '\0';
@@ -140,7 +152,9 @@ static void sd_row_click_cb(lv_event_t *e) {
 static void do_delete_confirmed(void *user_data) {
     (void)user_data;
     bool ok = storage_delete_config(s_confirm_name);
-    lv_label_set_text_fmt(s_status_lbl, ok ? "Deleted '%s'" : "Delete failed: '%s'", s_confirm_name);
+    char disp[STORAGE_NAME_MAX + 5];
+    with_json_ext(s_confirm_name, disp, sizeof disp);
+    lv_label_set_text_fmt(s_status_lbl, ok ? "Deleted '%s'" : "Delete failed: '%s'", disp);
     ui_shell_close(1);   // confirm -> back to BAR_LOAD
     if (ok) ui_config_refresh();
 }
@@ -166,7 +180,9 @@ static void delete_btn_cb(lv_event_t *e) {
         }
         strip_json_ext(fname, s_confirm_name, sizeof s_confirm_name);
     }
-    snprintf(s_confirm_msg, sizeof s_confirm_msg, "Delete '%s'? This cannot be undone.", s_confirm_name);
+    char disp[STORAGE_NAME_MAX + 5];
+    with_json_ext(s_confirm_name, disp, sizeof disp);
+    snprintf(s_confirm_msg, sizeof s_confirm_msg, "Delete '%s'? This cannot be undone.", disp);
     ui_common_show_confirm(s_confirm_msg, "Delete", do_delete_confirmed, NULL);
 }
 
@@ -175,7 +191,9 @@ void ui_config_delete(void) { delete_btn_cb(NULL); }
 static void do_overwrite_confirmed(void *user_data) {
     (void)user_data;
     bool ok = storage_save_config(s_confirm_name);
-    lv_label_set_text_fmt(s_status_lbl, ok ? "Overwrote '%s'" : "Overwrite failed: '%s'", s_confirm_name);
+    char disp[STORAGE_NAME_MAX + 5];
+    with_json_ext(s_confirm_name, disp, sizeof disp);
+    lv_label_set_text_fmt(s_status_lbl, ok ? "Overwrote '%s'" : "Overwrite failed: '%s'", disp);
     if (ok) {
         strncpy(s_current_config_name, s_confirm_name, sizeof s_current_config_name - 1);
         s_current_config_name[sizeof s_current_config_name - 1] = '\0';
@@ -190,10 +208,16 @@ static void save_form_save(void) {
         lv_label_set_text(s_status_lbl, "Enter a name first");
         return;
     }
+    if (!storage_name_is_valid(name)) {
+        lv_label_set_text(s_status_lbl, "Name has invalid characters");
+        return;
+    }
     if (storage_config_exists(name)) {
         strncpy(s_confirm_name, name, sizeof s_confirm_name - 1);
         s_confirm_name[sizeof s_confirm_name - 1] = '\0';
-        snprintf(s_confirm_msg, sizeof s_confirm_msg, "Overwrite '%s' with the current config?", s_confirm_name);
+        char disp[STORAGE_NAME_MAX + 5];
+        with_json_ext(s_confirm_name, disp, sizeof disp);
+        snprintf(s_confirm_msg, sizeof s_confirm_msg, "Overwrite '%s' with the current config?", disp);
         // Pushed on top of the still-open Save-As screen: Back from here
         // (cancel) pops just this confirm, landing back on Save-As with the
         // typed name intact.
@@ -201,7 +225,9 @@ static void save_form_save(void) {
         return;
     }
     bool ok = storage_save_config(name);
-    lv_label_set_text_fmt(s_status_lbl, ok ? "Saved '%s'" : "Save failed: '%s'", name);
+    char disp[STORAGE_NAME_MAX + 5];
+    with_json_ext(name, disp, sizeof disp);
+    lv_label_set_text_fmt(s_status_lbl, ok ? "Saved '%s'" : "Save failed: '%s'", disp);
     if (ok) {
         strncpy(s_current_config_name, name, sizeof s_current_config_name - 1);
         s_current_config_name[sizeof s_current_config_name - 1] = '\0';
