@@ -636,21 +636,16 @@ static void shell_button_cb(uartkbd_btn_t btn, bool pressed) {
             break;
         }
         case UARTKBD_BTN_GREY:
-            goto_area(AREA_MONITOR);
-            break;
         case UARTKBD_BTN_YELLOW:
-            goto_area(AREA_TRANSMIT);
-            break;
         case UARTKBD_BTN_GREEN:
-            goto_area(AREA_TRANSMIT);
-            action_transmit_controls();
-            break;
         case UARTKBD_BTN_BLUE:
-            goto_area(AREA_DIAGNOSTICS);
+        case UARTKBD_BTN_RED: {
+            // GREY..RED enum order matches bar_slot_t[0..4] 1:1 — mirror
+            // whatever the on-screen slot does, same as bar_slot_btn_cb.
+            void (*cb)(void) = bar_slots_for_mode(s_bar_mode)[(int)btn].cb;
+            if (cb) cb();
             break;
-        case UARTKBD_BTN_RED:
-            goto_area(AREA_SETUP);
-            break;
+        }
         default:
             break;
     }
