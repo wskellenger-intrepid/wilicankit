@@ -1,0 +1,28 @@
+/* wilicankit override of the SDK's script_include/sections_no_flash.incl.
+   Only change: sections_psram.incl moves after sections_no_flash_data.incl.
+   .psram_noload is 4 MB of NOLOAD scratch, and in the stock order it advances
+   the PSRAM region pointer before .data's load address is assigned — which
+   punched a 4 MB hole into the middle of the image that the display loader
+   would have had to stage across. Emitting .data's LMA first keeps every
+   loadable byte contiguous, with the uninitialised region as a NOLOAD tail. */
+
+INCLUDE "sections_no_flash_text.incl"
+INCLUDE "section_generated_post_text.incl"
+INCLUDE "section_extra_post_text.incl"
+INCLUDE "section_xip_ram.incl"
+INCLUDE "sections_no_flash_data.incl"
+INCLUDE "sections_psram.incl"
+INCLUDE "section_generated_post_data.incl"
+INCLUDE "section_extra_post_data.incl"
+INCLUDE "section_heap.incl"
+INCLUDE "sections_scratch.incl"
+INCLUDE "section_generated_post_scratch.incl"
+INCLUDE "section_extra_post_scratch.incl"
+INCLUDE "sections_stack.incl"
+INCLUDE "section_end.incl"
+INCLUDE "section_no_flash_end.incl"
+INCLUDE "section_generated_post_end.incl"
+INCLUDE "section_extra_post_end.incl"
+INCLUDE "section_platform_end.incl"
+INCLUDE "section_generated_post_platform_end.incl"
+INCLUDE "section_extra_post_platform_end.incl"

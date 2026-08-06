@@ -101,5 +101,37 @@ target_link_libraries(wilicankit freewili2_bsp onewili_fwgui lvgl cjson)
 # the max this app can request without a custom linker script; UI code
 # should still avoid large stack-local buffers (prefer `static`) as a rule.
 target_compile_definitions(wilicankit PRIVATE PICO_STACK_SIZE=0x1000)
-pico_set_binary_type(wilicankit copy_to_ram)   # required: firmware runs from SRAM
-pico_add_extra_outputs(wilicankit)             # .uf2 / .bin / .map
+
+# PSRAM-resident build. The display's SD app loader routes purely on the first
+# UF2 block's target address: anything in the flash window makes it erase and
+# reprogram the display's flash, destroying the persistent FW2Display
+# bootloader. Staging at 0x11000000 instead routes to the PSRAM loader
+# (freewilimain runPsramAppFromSD), which never touches flash. The RAM window
+# is not an option: its ceiling is BL_STAGE_BYTES (192 KiB) and this app's
+# .text+.data is well over twice that.
+#
+# no_flash is the base binary type because it is the only one that emits no
+# flash-targeted blocks at all; the linker_overrides/ directory then moves
+# .text/.rodata into PSRAM and stores .data there, which stock no_flash cannot
+# do (it aliases PSRAM_STORE to RAM).
+pico_set_binary_type(wilicankit no_flash)
+pico_add_linker_script_override_path(wilicankit ${CMAKE_CURRENT_LIST_DIR}/linker_overrides)
+target_compile_definitions(wilicankit PRIVATE
+    # no_flash normally loads .data in place and so skips crt0's copy; here the
+    # load address is in PSRAM and the run address in RAM, so the copy is real.
+    PICO_CRT0_NO_DATA_COPY=0
+    # The PSRAM loader's stub hands us PSRAM already configured. Re-running the
+    # SDK's setup would re-time the QMI window this app is executing from.
+    PICO_RUNTIME_SKIP_INIT_PSRAM=1
+)
+
+# Not pico_add_extra_outputs(): its picotool uf2 step fails with "entry point
+# is not in mapped part of file", because picotool only maps the flash and
+# SRAM windows. tools/elf2uf2_psram.py walks the program headers instead.
+pico_add_dis_output(wilicankit)
+pico_add_map_output(wilicankit)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_custom_command(TARGET wilicankit POST_BUILD
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tools/elf2uf2_psram.py
+            $<TARGET_FILE:wilicankit> ${CMAKE_CURRENT_BINARY_DIR}/wilicankit.uf2
+    VERBATIM)

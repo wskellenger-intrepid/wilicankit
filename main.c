@@ -5,6 +5,13 @@
 // see AGENTS.md; this app never touches MAIN CPU firmware).
 #include "fw2.h"
 #include "platform/diag.h"
+#include "platform/spi_bus.h"
+#include "hardware/clocks.h"
+#include "hardware/gpio.h"
+#include "hardware/irq.h"
+#include "hardware/resets.h"
+#include "pico/runtime.h"
+#include "pico/runtime_init.h"
 #include "pico/stdlib.h"
 #include "lvgl.h"
 #include "lvgl_port.h"
@@ -14,10 +21,77 @@
 #include "ui_shell.h"
 #include "app_state.h"
 
+// Strong override of the SDK's __weak version, which resets IO_BANK0 and
+// PADS_BANK0. It already holds the QSPI bank out "as this is fatal if running
+// from flash"; this app runs from PSRAM, whose chip select is XIP_CS1n on
+// GPIO 47 in bank 0, so the stock version strips the CS function and the very
+// next instruction fetch takes an IBUSERR. Body is otherwise verbatim.
+void runtime_init_early_resets(void) {
+    reset_block_mask(~(
+            (1u << RESET_IO_QSPI) |
+            (1u << RESET_PADS_QSPI) |
+            (1u << RESET_IO_BANK0) |
+            (1u << RESET_PADS_BANK0) |
+            (1u << RESET_PLL_USB) |
+            (1u << RESET_USBCTRL) |
+            (1u << RESET_SYSCFG) |
+            (1u << RESET_PLL_SYS)
+    ));
+
+    unreset_block_mask_wait_blocking(RESETS_RESET_BITS & ~(
+            (1u << RESET_HSTX) |
+            (1u << RESET_ADC) |
+            (1u << RESET_SPI0) |
+            (1u << RESET_SPI1) |
+            (1u << RESET_UART0) |
+            (1u << RESET_UART1) |
+            (1u << RESET_USBCTRL)
+    ));
+}
+
+// The PSRAM loader stub (Fw2PsramStub launchPsramApp) branches to vector word 1
+// with `cpsid i` still in force, and crt0 never issues `cpsie i` because a
+// bootrom handover always arrives with interrupts already enabled. Left masked,
+// the first sleep_ms() waits forever on a timer IRQ that can never fire. The
+// NVIC sweep drops anything the stub left enabled or pending, so re-enabling
+// can't immediately vector into __unhandled_user_irq; EARLIEST keeps it ahead
+// of the default alarm pool, which claims its own IRQ later at "11000".
+static void psram_stub_irq_handover(void) {
+    for (uint i = 0; i < NUM_IRQS; i++) {
+        irq_set_enabled(i, false);
+        irq_clear(i);
+    }
+    __asm volatile ("cpsie i" ::: "memory");
+}
+PICO_RUNTIME_INIT_FUNC_RUNTIME(psram_stub_irq_handover, PICO_RUNTIME_INIT_EARLIEST);
+
+// Mirrors wilibsp's board_init_clk() with its clock/PSRAM prologue removed.
+// This app executes from PSRAM, so it must not raise clk_sys (that invalidates
+// the QMI M1 timing of the window it is fetching instructions from) and must
+// not call psram_reinitialize() (documented unsafe from PSRAM, and the loader's
+// stub has already configured the chip). Everything below is the tail of
+// board_init_clk() verbatim; it belongs upstream in wilibsp eventually.
+static void board_init_psram_resident(void) {
+    uint32_t f = clock_get_hz(clk_sys);
+    clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS, f, f);
+
+    spi_bus_init();
+
+    gpio_init(PIN_CC1101_CS);
+    gpio_set_dir(PIN_CC1101_CS, GPIO_OUT);
+    gpio_put(PIN_CC1101_CS, 1);
+
+    gpio_init(PIN_LCD_BL);
+    gpio_set_dir(PIN_LCD_BL, GPIO_OUT);
+    board_backlight_set(0);
+
+    board_i2c1_init();
+    ioexp_init();
+}
+
 int main(void) {
-    // 200 MHz, not the board default 250: matches Fw2Display, whose hardware-
-    // validated QMI M1 timing is the only PSRAM recipe proven at a raised clock.
-    board_init_clk(200000);
+    board_init_psram_resident();
+    DIAG("wilicankit: PSRAM-resident, clk_sys=%u Hz\n", clock_get_hz(clk_sys));
     st7796_init();
     board_backlight_set(1);
     ft6336_init();

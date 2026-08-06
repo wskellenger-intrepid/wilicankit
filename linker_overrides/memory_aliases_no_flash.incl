@@ -1,0 +1,13 @@
+/* wilicankit override of the SDK's script_include/memory_aliases_no_flash.incl.
+   The stock file aliases PSRAM_STORE to RAM ("Can't store in PSRAM") because a
+   normal no_flash image is staged into SRAM by the bootloader, so initialised
+   PSRAM data has to travel through SRAM. This app is staged into PSRAM itself,
+   so it stores there directly — that is what stops __in_psram data from
+   counting against the 512 KB SRAM budget. */
+
+REGION_ALIAS("TEXT_STORE", PSRAM);
+REGION_ALIAS("RAM_STORE", PSRAM);
+REGION_ALIAS("PSRAM_STORE", PSRAM);
+REGION_ALIAS("XIP_RAM_STORE", XIP_RAM);
+REGION_ALIAS("SCRATCH_X_STORE", SCRATCH_X);
+REGION_ALIAS("SCRATCH_Y_STORE", SCRATCH_Y);

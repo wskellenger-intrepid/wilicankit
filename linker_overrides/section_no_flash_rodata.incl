@@ -1,0 +1,15 @@
+/* wilicankit override of the SDK's script_include/section_no_flash_rodata.incl.
+   Identical to the SDK copy except the output region is PSRAM, not RAM — see
+   section_no_flash_text.incl in this directory. */
+
+SECTIONS
+{
+    .rodata : {
+        . = ALIGN(4);
+        *(.rodata*)
+        *(.srodata*)
+        . = ALIGN(4);
+        *(SORT_BY_ALIGNMENT(SORT_BY_NAME(.flashdata*)))
+        . = ALIGN(4);
+    } > PSRAM
+}
