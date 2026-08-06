@@ -274,7 +274,7 @@ static int cmp_signal_name(const void *a, const void *b) {
 }
 
 static void rebuild_signal_dropdown(bool bit1_only) {
-    static char opts[CAN_MAX_SIGNALS * (CAN_SIGNAL_NAME_MAX + 1)];
+    static char __uninitialized_psram("wilicankit_ctrl_opts") opts[CAN_MAX_SIGNALS * (CAN_SIGNAL_NAME_MAX + 1)];
     int n = 0;
     for (int i = 0; i < CAN_MAX_SIGNALS; i++) {
         if (!g_signals[i].in_use) continue;

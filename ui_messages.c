@@ -3,6 +3,7 @@
 #include "ui_common.h"
 #include "ui_shell.h"
 #include "app_state.h"
+#include "pico/stdlib.h"   // __uninitialized_psram, via pico/platform/sections.h
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -88,7 +89,7 @@ static void placement_row_click_cb(lv_event_t *e) {
 }
 
 static void rebuild_signal_dropdown(void) {
-    static char opts[CAN_MAX_SIGNALS * (CAN_SIGNAL_NAME_MAX + 1)];
+    static char __uninitialized_psram("wilicankit_msg_opts") opts[CAN_MAX_SIGNALS * (CAN_SIGNAL_NAME_MAX + 1)];
     opts[0] = '\0';
     int n = 0;
     for (int i = 0; i < CAN_MAX_SIGNALS; i++) {
