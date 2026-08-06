@@ -620,7 +620,8 @@ static void shell_button_cb(uartkbd_btn_t btn, bool pressed) {
 
     switch (btn) {
         case UARTKBD_BTN_HOME:
-            goto_area(AREA_MONITOR);
+            nav_pop(NAV_STACK_MAX);   // close any open form/confirm overlay first
+            go_home();
             break;
         case UARTKBD_BTN_PAGE:
             area_cycle_next();
