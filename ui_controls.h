@@ -1,7 +1,9 @@
 // apps/wilicankit/ui_controls.h — Controls tab: add sliders/toggles bound to
 // existing signals; moving a slider or flipping a toggle updates the
 // signal's physical value and immediately re-sends (one-shot) any enabled
-// message containing it.
+// message containing it. The per-card Sine and Random buttons deliberately
+// do NOT re-send: they only update the signal's value, leaving it to each
+// message's own periodic config to decide when it reaches the bus.
 #ifndef WILICANKIT_UI_CONTROLS_H
 #define WILICANKIT_UI_CONTROLS_H
 #include "lvgl.h"

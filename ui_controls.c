@@ -2,6 +2,7 @@
 #include "ui_controls.h"
 #include "ui_common.h"
 #include "ui_shell.h"
+#include "ui_icons.h"
 #include "app_state.h"
 #include "can_link.h"
 #include "pico/stdlib.h"
@@ -11,6 +12,8 @@
 
 #define SLIDER_RESOLUTION 1000
 #define SLIDER_PUSH_MIN_INTERVAL_MS 50
+#define SINE_TIMER_PERIOD_MS 50
+#define SINE_STEP_DEG 4  // ~4.5s per 360-degree cycle at SINE_TIMER_PERIOD_MS
 
 static lv_obj_t *s_container;
 static lv_obj_t *s_form_page;
@@ -18,6 +21,7 @@ static lv_obj_t *s_dd_signal;
 static uint8_t   s_dd_signal_ids[CAN_MAX_SIGNALS];
 static uint8_t   s_adding_control_type;   // CAN_CONTROL_SLIDER/TOGGLE for the open Add form
 static uint32_t  s_last_push_ms[CAN_MAX_CONTROLS];
+static uint16_t  s_sine_phase_deg;        // shared phase driving every sine-enabled slider
 
 // Re-sends every enabled message that has `signal_id` placed in it, right
 // now, with its payload rebuilt from current signal values. Uses an
@@ -41,6 +45,13 @@ static void push_signal_updates(uint8_t signal_id) {
             }
         }
     }
+}
+
+static void update_value_label(lv_obj_t *lbl, const can_signal_t *sig) {
+    if (!lbl) return;
+    static char buf[48];
+    snprintf(buf, sizeof buf, "%s: %.3g %s", sig->name, sig->value, sig->units);
+    lv_label_set_text(lbl, buf);
 }
 
 static void remove_control_confirmed(void *user_data) {
@@ -71,13 +82,7 @@ static void slider_value_changed_cb(lv_event_t *e) {
     int32_t pos = lv_slider_get_value(sl);
     double physical = sig->min_value + ((double)pos / SLIDER_RESOLUTION) * (sig->max_value - sig->min_value);
     sig->value = physical;
-
-    lv_obj_t *lbl = (lv_obj_t *)lv_obj_get_user_data(sl);
-    if (lbl) {
-        static char buf[48];
-        snprintf(buf, sizeof buf, "%s: %.3g %s", sig->name, physical, sig->units);
-        lv_label_set_text(lbl, buf);
-    }
+    update_value_label((lv_obj_t *)lv_obj_get_user_data(sl), sig);
 
     // Throttled to SLIDER_PUSH_MIN_INTERVAL_MS during a drag (VALUE_CHANGED
     // fires continuously while dragging) to bound how often a one-shot TX
@@ -101,17 +106,73 @@ static void toggle_value_changed_cb(lv_event_t *e) {
 
     bool on = lv_obj_has_state(sw, LV_STATE_CHECKED);
     sig->value = on ? sig->max_value : sig->min_value;
-
-    lv_obj_t *lbl = (lv_obj_t *)lv_obj_get_user_data(sw);
-    if (lbl) {
-        static char buf[48];
-        snprintf(buf, sizeof buf, "%s: %.3g %s", sig->name, sig->value, sig->units);
-        lv_label_set_text(lbl, buf);
-    }
+    update_value_label((lv_obj_t *)lv_obj_get_user_data(sw), sig);
 
     // A switch flip is a single discrete event (not a drag), so push
     // immediately every time — no throttle needed.
     push_signal_updates(sig_id);
+}
+
+// Randomize deliberately never pushes/sends — see the no-extra-send design
+// note in ui_controls.h: only a message's own periodic config decides when
+// a signal's value actually reaches the bus.
+static void random_btn_cb(lv_event_t *e) {
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    uint8_t sig_id = g_controls[idx].signal_id;
+    if (sig_id == CAN_SIGNAL_ID_NONE || !g_signals[sig_id].in_use) return;
+    can_signal_t *sig = &g_signals[sig_id];
+
+    g_controls[idx].sine_enabled = false; // randomizing a value should stick, not get overwritten next tick
+
+    lv_obj_t *btn = lv_event_get_target(e);
+    lv_obj_t *card = lv_obj_get_parent(lv_obj_get_parent(btn));
+    lv_obj_t *widget = lv_obj_get_child(card, 1);
+
+    if (g_controls[idx].control_type == CAN_CONTROL_TOGGLE) {
+        bool on = lv_rand(0, 1) == 1;
+        if (on) lv_obj_add_state(widget, LV_STATE_CHECKED);
+        else lv_obj_remove_state(widget, LV_STATE_CHECKED);
+        sig->value = on ? sig->max_value : sig->min_value;
+    } else {
+        int32_t pos = (int32_t)lv_rand(0, SLIDER_RESOLUTION);
+        lv_slider_set_value(widget, pos, LV_ANIM_ON);
+        float minv = (float)sig->min_value, maxv = (float)sig->max_value;
+        sig->value = minv + ((float)pos / SLIDER_RESOLUTION) * (maxv - minv);
+    }
+
+    update_value_label((lv_obj_t *)lv_obj_get_user_data(widget), sig);
+}
+
+// Toggles this control's sine-exercise flag; the shared sine_tick_cb timer
+// (see ui_controls_create) does the actual continuous value updates.
+static void sine_btn_cb(lv_event_t *e) {
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    lv_obj_t *btn = lv_event_get_target(e);
+    g_controls[idx].sine_enabled = lv_obj_has_state(btn, LV_STATE_CHECKED);
+}
+
+// Shared timer driving every sine-enabled slider: advances one global phase
+// and applies it (with a per-control offset) to each enabled control's
+// sig->value only — never pushes/sends (see the no-extra-send design note)
+// and never touches the on-screen widget; the message's own periodic config
+// picks the value up. Scans g_controls[] directly (not the rendered cards)
+// since this only needs to update raw values, not any UI object.
+static void sine_tick_cb(lv_timer_t *timer) {
+    (void)timer;
+    s_sine_phase_deg = (uint16_t)((s_sine_phase_deg + SINE_STEP_DEG) % 360);
+
+    for (int idx = 0; idx < CAN_MAX_CONTROLS; idx++) {
+        if (!g_controls[idx].in_use || g_controls[idx].control_type != CAN_CONTROL_SLIDER) continue;
+        if (!g_controls[idx].sine_enabled) continue;
+        uint8_t sig_id = g_controls[idx].signal_id;
+        if (sig_id == CAN_SIGNAL_ID_NONE || !g_signals[sig_id].in_use) continue;
+        can_signal_t *sig = &g_signals[sig_id];
+
+        int16_t deg = (int16_t)((s_sine_phase_deg + (idx * 37)) % 360);
+        float norm = (float)lv_trigo_sin(deg) / (float)LV_TRIGO_SIN_MAX; // -1..1
+        float minv = (float)sig->min_value, maxv = (float)sig->max_value;
+        sig->value = (minv + maxv) * 0.5f + norm * (maxv - minv) * 0.5f;
+    }
 }
 
 static int cmp_control_slider_first(const void *a, const void *b) {
@@ -146,20 +207,40 @@ void ui_controls_refresh(void) {
         lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_style_pad_all(card, 4, 0);
         lv_obj_set_style_pad_row(card, 4, 0);
+        lv_obj_set_user_data(card, (void *)(intptr_t)i); // read back by sine_tick_cb
 
         lv_obj_t *top_row = lv_obj_create(card);
         lv_obj_set_width(top_row, LV_PCT(100));
         lv_obj_set_height(top_row, LV_SIZE_CONTENT);
         lv_obj_set_style_border_width(top_row, 0, 0);
         lv_obj_set_style_pad_all(top_row, 0, 0);
+        lv_obj_set_style_pad_column(top_row, 4, 0);
         lv_obj_set_flex_flow(top_row, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(top_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_flex_align(top_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
         lv_obj_t *lbl = lv_label_create(top_row);
         snprintf(buf, sizeof buf, "%s: %.3g %s", sig->name, sig->value, sig->units);
         lv_label_set_text(lbl, buf);
+        lv_obj_set_flex_grow(lbl, 1); // pushes the buttons that follow to the right edge
+
+        if (g_controls[i].control_type == CAN_CONTROL_SLIDER) {
+            lv_obj_t *sine_btn = lv_button_create(top_row);
+            lv_obj_add_flag(sine_btn, LV_OBJ_FLAG_CHECKABLE);
+            if (g_controls[i].sine_enabled) lv_obj_add_state(sine_btn, LV_STATE_CHECKED);
+            lv_obj_set_style_bg_color(sine_btn, lv_palette_main(LV_PALETTE_BLUE), LV_STATE_CHECKED);
+            lv_obj_add_event_cb(sine_btn, sine_btn_cb, LV_EVENT_VALUE_CHANGED, (void *)(intptr_t)i);
+            lv_obj_t *sine_img = lv_image_create(sine_btn);
+            lv_image_set_src(sine_img, &ui_icon_sine);
+            lv_obj_set_style_image_recolor_opa(sine_img, LV_OPA_COVER, 0);
+            lv_obj_set_style_image_recolor(sine_img, lv_color_white(), 0);
+        }
+
+        lv_obj_t *random_btn = lv_button_create(top_row);
+        lv_obj_add_event_cb(random_btn, random_btn_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        lv_label_set_text(lv_label_create(random_btn), LV_SYMBOL_SHUFFLE);
 
         lv_obj_t *del_btn = lv_button_create(top_row);
+        lv_obj_set_style_bg_color(del_btn, lv_palette_main(LV_PALETTE_RED), 0);
         lv_obj_add_event_cb(del_btn, remove_control_btn_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
         lv_label_set_text(lv_label_create(del_btn), LV_SYMBOL_TRASH);
 
@@ -271,6 +352,8 @@ lv_obj_t *ui_controls_create(lv_obj_t *parent) {
 
     s_dd_signal = lv_dropdown_create(s_form_page);
     lv_obj_set_width(s_dd_signal, LV_PCT(100));
+
+    lv_timer_create(sine_tick_cb, SINE_TIMER_PERIOD_MS, NULL);
 
     ui_controls_refresh();
     return parent;

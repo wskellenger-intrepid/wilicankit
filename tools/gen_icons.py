@@ -43,6 +43,7 @@ ICONS = [
     ("online", "plug-connected"),
     ("offline", "plug-off"),
     ("health", "ambulance"),
+    ("sine", "wave-sine"),
 ]
 SIZE = 24
 OUT_PATH = "ui_icons.c"

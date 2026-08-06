@@ -8,7 +8,6 @@
 #include "ui_config.h"
 #include "ui_monitor.h"
 #include "ui_icons.h"
-#include "ui_background.h"
 #include "can_link.h"
 #include "lvgl_port.h"
 #include "lvgl.h"
@@ -708,8 +707,6 @@ void ui_shell_create(void) {
     // Blank for now (a logo later) — the top-level landing shown at boot
     // and whenever Back exits an area back to the tile bar. Distinct from
     // s_pages[AREA_MONITOR], which is only Monitor's own placeholder.
-    // pad_all 0 (unlike the other pages) so the background image below
-    // covers the full content area edge-to-edge.
     s_home_page = lv_obj_create(content);
     lv_obj_set_size(s_home_page, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_pad_all(s_home_page, 0, 0);
@@ -717,10 +714,6 @@ void ui_shell_create(void) {
     lv_obj_set_style_radius(s_home_page, 0, 0);
     lv_obj_add_flag(s_home_page, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(s_home_page, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *home_bg = lv_image_create(s_home_page);
-    lv_image_set_src(home_bg, &ui_background);
-    lv_obj_center(home_bg);
 
     for (int i = 0; i < AREA_COUNT; i++) {
         s_pages[i] = lv_obj_create(content);

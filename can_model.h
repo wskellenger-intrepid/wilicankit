@@ -87,7 +87,8 @@ typedef struct {
 typedef struct {
     bool    in_use;
     uint8_t signal_id;
-    uint8_t control_type; // CAN_CONTROL_SLIDER or CAN_CONTROL_TOGGLE
+    uint8_t control_type : 1; // CAN_CONTROL_SLIDER or CAN_CONTROL_TOGGLE
+    uint8_t sine_enabled : 1; // transient exercise mode, not persisted to JSON
 } can_control_t;
 
 // Pack `value` (raw, unsigned) into `buf` (>= 8 bytes) at the given bit

@@ -34,5 +34,6 @@ extern const lv_image_dsc_t ui_icon_new;         // tools/icon_src/file-plus.png
 extern const lv_image_dsc_t ui_icon_online;      // tools/icon_src/plug-connected.png
 extern const lv_image_dsc_t ui_icon_offline;     // tools/icon_src/plug-off.png
 extern const lv_image_dsc_t ui_icon_health;      // tools/icon_src/ambulance.png
+extern const lv_image_dsc_t ui_icon_sine;        // tools/icon_src/wave-sine.png
 
 #endif // UI_ICONS_H
