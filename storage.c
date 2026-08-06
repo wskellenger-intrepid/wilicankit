@@ -144,8 +144,24 @@ bool storage_save_config(const char *name) {
     if (printed) {
         size_t len = strlen(s_json_text);
         if (s_backend == STORAGE_BACKEND_SD) {
-            ok = ow_sd_put_mem(NULL, path, s_json_text, len, false) == OW_OK;
-            if (!ok) DIAG("storage: sd write failed: %s\n", path);
+            // ow_sd_put_mem sends every SDFS_MAX_PAYLOAD chunk back-to-back with
+            // no pacing; confirmed on hardware that MAIN's SDFS server silently
+            // drops everything past the first chunk, truncating the file to
+            // exactly SDFS_MAX_PAYLOAD bytes. Writing one chunk per ow_sd_write
+            // call gets an ack (sdfs_hwrite's per-call backpressure point)
+            // before the next chunk is sent, so MAIN can keep up.
+            ow_sd_file f;
+            ok = ow_sd_open(NULL, &f, path, OW_SD_WRITE) == OW_OK;
+            for (size_t off = 0; ok && off < len; off += (SDFS_MAX_PAYLOAD - 1)) {
+                size_t n = len - off;
+                if (n > SDFS_MAX_PAYLOAD - 1) n = SDFS_MAX_PAYLOAD - 1;
+                ok = ow_sd_write(&f, s_json_text + off, n) == OW_OK;
+            }
+            if (f.is_open) ok = (ow_sd_close(&f) == OW_OK) && ok;
+            if (!ok) {
+                DIAG("storage: sd write failed: %s\n", path);
+                ow_sd_remove(NULL, path);   // sdfslib writes have no rollback -- clean up the truncated file ourselves
+            }
         } else {
             FIL f;
             if (f_open(&f, path, FA_CREATE_ALWAYS | FA_WRITE) == FR_OK) {
