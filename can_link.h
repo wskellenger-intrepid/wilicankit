@@ -1,6 +1,7 @@
-// apps/wilicankit/can_link.h — thin OneWili wrapper for CAN TX. This is the
-// ONLY place in the app that talks to the MAIN CPU, and it only ever calls
-// existing generated onewili/onewili_fwgui API — never anything MAIN-side.
+// apps/wilicankit/can_link.h — thin OneWili wrapper for CAN TX. It only ever
+// calls existing generated onewili/onewili_fwgui API — never anything
+// MAIN-side. The link itself is owned by ow_link.c; main() hands the device
+// in via can_link_attach().
 // The RP2350B display processor has no native CAN controller (see AGENTS.md).
 #ifndef CAN_LINK_H_
 #define CAN_LINK_H_
@@ -8,12 +9,13 @@
 #include <stdint.h>
 #include "can_model.h"
 
-// Opens the FwGUI link to the MAIN CPU. Blocks, retrying forever (with a
-// DIAG message per attempt) until the link comes up. Call once at startup,
-// after board_init().
-void can_link_open(void);
+struct ow_device;
 
-// True once can_link_open() has completed successfully.
+// Binds the already-opened OneWili link (ow_link_open/ow_link_device). Call
+// once at startup; passing NULL leaves this module inert.
+void can_link_attach(struct ow_device *dev);
+
+// True once can_link_attach() has been given a live device.
 bool can_link_is_open(void);
 
 // Global TX gate, independent of each message's own enabled/periodic state.

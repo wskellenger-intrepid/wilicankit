@@ -6,12 +6,8 @@
 #include "pico/stdlib.h"
 #include "app_state.h"
 
-// ~37 KB of buffers (per toggleled) — far too big for the 2 KB stack, and
-// too big for SRAM's fixed 512 KB copy_to_ram budget too (was 45% of all
-// .bss). Only touched by blocking, low-frequency serial calls (open, CAN
-// writes, GPIO reads) -- no DMA/ISR, so PSRAM's extra QSPI latency doesn't
-// matter here the way it does for the LVGL draw buffers.
-static ow_device __uninitialized_psram("wilicankit_ow_device") s_dev;
+// ~37 KB of buffers, owned by ow_link.c — this module only borrows it.
+static ow_device *s_dev;
 static bool s_open = false;
 
 // Global TX gate — see can_link.h. Defaults offline; user must opt in.
@@ -67,13 +63,9 @@ static uint32_t now_ms(void) {
     return to_ms_since_boot(get_absolute_time());
 }
 
-void can_link_open(void) {
-    while (ow_open_fwgui(&s_dev) != OW_OK) {
-        DIAG("can_link: FwGUI link open failed (is the main CPU running stock fw?), retry in 1 s\n");
-        sleep_ms(1000);
-    }
-    s_open = true;
-    DIAG("can_link: link up\n");
+void can_link_attach(struct ow_device *dev) {
+    s_dev = dev;
+    s_open = (dev != NULL);
 }
 
 void can_link_notify_power_zones(uint32_t zone_mask) {
@@ -98,7 +90,7 @@ bool can_link_send_once(const can_message_t *msg, const can_signal_t *signals) {
     if (!s_online) return false;   // offline: never touch MAIN, avoids the blocking round-trip
     uint8_t buf[8];
     can_message_build(msg, signals, buf);
-    ow_status st = ow_io_canfd_write_canfd(&s_dev, msg->channel, msg->can_id, 0,
+    ow_status st = ow_io_canfd_write_canfd(s_dev, msg->channel, msg->can_id, 0,
                                             msg->extended_id ? 1 : 0, buf, msg->dlc);
     if (st != OW_OK) {
         DIAG("can_link: send_once failed, status %d\n", (int)st);
@@ -127,7 +119,7 @@ bool can_link_arm_periodic(uint8_t slot_index, const can_message_t *msg, const c
     if (!s_open) return false;
     uint8_t buf[8];
     can_message_build(msg, signals, buf);
-    ow_status st = ow_io_canfd_write_canfd_periodic(&s_dev, slot_index, 1, (int32_t)msg->period_us,
+    ow_status st = ow_io_canfd_write_canfd_periodic(s_dev, slot_index, 1, (int32_t)msg->period_us,
                                                       msg->channel, msg->can_id, 0,
                                                       msg->extended_id ? 1 : 0, buf, msg->dlc);
     if (st != OW_OK) DIAG("can_link: arm_periodic(%d) failed, status %d\n", (int)slot_index, (int)st);
@@ -137,7 +129,7 @@ bool can_link_arm_periodic(uint8_t slot_index, const can_message_t *msg, const c
 bool can_link_disable_periodic(uint8_t slot_index, const can_message_t *msg) {
     if (!s_open) return false;
     uint8_t buf[8] = {0};
-    ow_status st = ow_io_canfd_write_canfd_periodic(&s_dev, slot_index, 0, 0,
+    ow_status st = ow_io_canfd_write_canfd_periodic(s_dev, slot_index, 0, 0,
                                                       msg->channel, msg->can_id, 0,
                                                       msg->extended_id ? 1 : 0, buf, msg->dlc);
     if (st != OW_OK) DIAG("can_link: disable_periodic(%d) failed, status %d\n", (int)slot_index, (int)st);
@@ -189,7 +181,7 @@ uint32_t can_link_rx_frames(void) {
 static void can_link_health_check(void) {
     if (!s_open) return;
     uint32_t gpiostate = 0;
-    ow_status st = ow_io_gpio_read_all(&s_dev, &gpiostate);
+    ow_status st = ow_io_gpio_read_all(s_dev, &gpiostate);
     s_health_attempts++;
     if (st == OW_OK) s_health_ok++;
     else s_health_last_err = (int32_t)st;

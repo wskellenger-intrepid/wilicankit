@@ -53,6 +53,12 @@
 #define CAN_CONTROL_SLIDER    0u
 #define CAN_CONTROL_TOGGLE    1u
 
+// can_control_t.exercise_mode — self-driving value generator, mutually
+// exclusive so arming one disarms the other.
+#define CAN_EXERCISE_OFF      0u
+#define CAN_EXERCISE_SINE     1u
+#define CAN_EXERCISE_RANDOM   2u
+
 typedef struct {
     bool    in_use;
     char    name[CAN_SIGNAL_NAME_MAX];
@@ -87,8 +93,8 @@ typedef struct {
 typedef struct {
     bool    in_use;
     uint8_t signal_id;
-    uint8_t control_type : 1; // CAN_CONTROL_SLIDER or CAN_CONTROL_TOGGLE
-    uint8_t sine_enabled : 1; // transient exercise mode, not persisted to JSON
+    uint8_t control_type : 1;   // CAN_CONTROL_SLIDER or CAN_CONTROL_TOGGLE
+    uint8_t exercise_mode : 2;  // transient exercise mode, not persisted to JSON
 } can_control_t;
 
 // Pack `value` (raw, unsigned) into `buf` (>= 8 bytes) at the given bit

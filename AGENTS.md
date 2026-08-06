@@ -131,11 +131,16 @@ drivers, the OneWili API) is a git submodule, not a parent repo. Clone with
 
 1. **No native CAN on the display processor.** All CAN TX goes through
    OneWili commands (`wilibsp/libs/onewili`) to the **MAIN CPU** over the
-   FwGUI UART0 link. `can_link.c` is the *only* file allowed to talk to
-   MAIN — never add code elsewhere that calls a `wilibsp`/`onewili`
-   function, and never invent/stub a MAIN-facing OneWili function that
-   doesn't exist upstream. If a needed OneWili function is missing, surface
-   it to the user instead of guessing at a wire protocol.
+   FwGUI UART0 link. `ow_link.c` owns the single `ow_device` (there is one
+   link per board) and `main()` hands the pointer to `can_link.c`, the only
+   module allowed to talk to MAIN. Never add MAIN-facing OneWili calls
+   outside those two files, and never invent/stub a MAIN-facing OneWili
+   function that doesn't exist upstream. If a needed OneWili function is
+   missing, surface it to the user instead of guessing at a wire protocol.
+   Note the `ow_gui_*` family (wire `g\...`) is **not** usable from this app
+   at all: those are host→MAIN→display GUI commands, and wilicankit *is* the
+   display app. The board's RGB LEDs are handled by cutting their power zone
+   instead — see `device_leds.c`.
 2. **Core0 stack is capped at 4 KB** (`PICO_STACK_SIZE=0x1000`) — use
    `static` buffers for anything non-trivial, not stack.
 3. **LVGL draw buffers live in PSRAM**, not SRAM — see `lvgl_port.c` and
@@ -194,8 +199,8 @@ points at these explicitly. No lint/typecheck tooling is configured.
 
 ### Forbidden
 
-- Calling a `wilibsp`/`onewili` function from anywhere other than
-  `can_link.c`, or inventing one that doesn't exist upstream.
+- Calling a MAIN-facing `onewili` function from anywhere other than
+  `ow_link.c` or `can_link.c`, or inventing one that doesn't exist upstream.
 - Growing `LV_MEM_SIZE` or moving LVGL draw buffers to SRAM without reading
   `docs/build-notes.md` first (previously caused a `.bss` overflow).
 - Using stack buffers for non-trivial data — Core0's stack is a hard 4 KB

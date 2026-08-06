@@ -8,7 +8,9 @@
 #include "pico/stdlib.h"
 #include "lvgl.h"
 #include "lvgl_port.h"
+#include "ow_link.h"
 #include "can_link.h"
+#include "device_leds.h"
 #include "ui_shell.h"
 #include "app_state.h"
 
@@ -54,7 +56,8 @@ int main(void) {
                  ? "up" : "state unknown");
     }
 
-    can_link_open();   // blocks with retry DIAGs until the MAIN CPU link is up
+    ow_link_open();    // blocks with retry DIAGs until the MAIN CPU link is up
+    can_link_attach(ow_link_device());
     can_link_periodic_init();  // initialize display-CPU periodic timer state
 
     uint32_t zone_mask = 0;
@@ -93,6 +96,7 @@ int main(void) {
         can_link_periodic_poll();  // check and fire periodic message timers
         ui_shell_poll();            // reflect any auto-offline (send failure) in the UI
         usb_store_task();
+        device_leds_task();
         sleep_ms(2);
     }
 }

@@ -76,7 +76,9 @@ add_executable(wilicankit
     lv_psram_pool.c
     ui_icons.c
     can_model.c
+    ow_link.c
     can_link.c
+    device_leds.c
     app_state.c
     ui_common.c
     ui_signals.c
