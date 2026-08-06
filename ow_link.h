@@ -18,4 +18,9 @@ struct ow_device *ow_link_device(void);
 
 bool ow_link_is_open(void);
 
+// Resets the DISPLAY CPU, which restores the stock GUI firmware (flash is
+// never touched) -- this app's own execution ends here. No-op if the link
+// isn't open. Used for the long-press-Home "exit app" gesture.
+void ow_link_exit_app(void);
+
 #endif // OW_LINK_H_

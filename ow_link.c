@@ -29,3 +29,8 @@ struct ow_device *ow_link_device(void) {
 bool ow_link_is_open(void) {
     return s_open;
 }
+
+void ow_link_exit_app(void) {
+    if (!s_open) return;
+    ow_hardware_display_functions_reset_display_cpu(&s_dev);
+}

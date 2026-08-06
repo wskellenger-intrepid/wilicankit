@@ -9,8 +9,10 @@
 #include "ui_monitor.h"
 #include "ui_icons.h"
 #include "can_link.h"
+#include "ow_link.h"
 #include "lvgl_port.h"
 #include "lvgl.h"
+#include "pico/stdlib.h"   // absolute_time_t / get_absolute_time, for Home hold-to-exit
 #include <string.h>
 
 #define WILICANKIT_VERSION "0.1.0"
@@ -615,14 +617,31 @@ static void area_cycle_next(void) {
     goto_area((app_area_t)next);
 }
 
+// Home's short-press action (go_home) fires immediately on press, same as
+// every other button; a hold past HOME_EXIT_HOLD_MS additionally exits the
+// app (checked from ui_shell_poll, since button events are edge-triggered).
+#define HOME_EXIT_HOLD_MS 2000
+static absolute_time_t s_home_press_at;
+static bool s_home_held;
+static bool s_home_exit_fired;
+
 static void shell_button_cb(uartkbd_btn_t btn, bool pressed) {
+    if (btn == UARTKBD_BTN_HOME) {
+        if (pressed) {
+            s_home_press_at = get_absolute_time();
+            s_home_held = true;
+            s_home_exit_fired = false;
+            nav_pop(NAV_STACK_MAX);   // close any open form/confirm overlay first
+            go_home();
+        } else {
+            s_home_held = false;
+        }
+        return;
+    }
+
     if (!pressed) return;
 
     switch (btn) {
-        case UARTKBD_BTN_HOME:
-            nav_pop(NAV_STACK_MAX);   // close any open form/confirm overlay first
-            go_home();
-            break;
         case UARTKBD_BTN_PAGE:
             area_cycle_next();
             break;
@@ -837,4 +856,9 @@ void ui_shell_create(void) {
 
 void ui_shell_poll(void) {
     if (can_link_is_online() != s_last_online) style_online_btn();
+    if (s_home_held && !s_home_exit_fired &&
+        absolute_time_diff_us(s_home_press_at, get_absolute_time()) >= HOME_EXIT_HOLD_MS * 1000) {
+        s_home_exit_fired = true;
+        ow_link_exit_app();
+    }
 }
