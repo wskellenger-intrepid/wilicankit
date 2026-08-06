@@ -12,6 +12,7 @@
 #include "ow_link.h"
 #include "lvgl_port.h"
 #include "lvgl.h"
+#include "input/uartkbd.h"  // charger telemetry for the title-bar battery icon
 #include "pico/stdlib.h"   // absolute_time_t / get_absolute_time, for Home hold-to-exit
 #include <string.h>
 
@@ -113,6 +114,7 @@ static bool s_last_online;
 static bool s_at_home = true;
 
 static lv_obj_t *s_title;
+static lv_obj_t *s_battery_lbl;
 static lv_obj_t *s_home_page;
 static lv_obj_t *s_pages[AREA_COUNT];
 static lv_obj_t *s_transmit_pages[TRANSMIT_TAB_COUNT];
@@ -225,6 +227,46 @@ static void style_online_btn(void) {
     lv_obj_set_style_bg_color(s_online_btn,
         online ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_RED), 0);
     lv_obj_set_style_text_color(s_online_btn, lv_color_white(), 0);
+}
+
+// Title-bar battery icon — LVGL's built-in glyphs (no custom asset needed),
+// driven by charger telemetry straight off the uartkbd link (no MAIN/OneWili
+// round-trip). vbatt_mv has no hardware-reported percentage, so it's bucketed
+// against a typical single-cell Li-ion voltage curve rather than shown as an
+// exact number. Only redraws on a tier change to avoid needless invalidation.
+static int s_last_battery_tier = -2;   // -2 = not yet drawn, -1 = no data
+static void update_battery_icon(void) {
+    uartkbd_charger_t chg;
+    int tier;
+    if (!uartkbd_charger(&chg)) {
+        tier = -1;
+    } else if (chg.charge_status == UARTKBD_CHG_PRECHARGE || chg.charge_status == UARTKBD_CHG_FASTCHARGE) {
+        tier = 5;
+    } else if (chg.vbatt_mv >= 4100) {
+        tier = 4;
+    } else if (chg.vbatt_mv >= 3900) {
+        tier = 3;
+    } else if (chg.vbatt_mv >= 3700) {
+        tier = 2;
+    } else if (chg.vbatt_mv >= 3500) {
+        tier = 1;
+    } else {
+        tier = 0;
+    }
+    if (tier == s_last_battery_tier) return;
+    s_last_battery_tier = tier;
+
+    if (tier < 0) {
+        lv_label_set_text(s_battery_lbl, "");
+        return;
+    }
+    static const char *const SYMS[6] = {
+        LV_SYMBOL_BATTERY_EMPTY, LV_SYMBOL_BATTERY_1, LV_SYMBOL_BATTERY_2,
+        LV_SYMBOL_BATTERY_3,     LV_SYMBOL_BATTERY_FULL, LV_SYMBOL_CHARGE,
+    };
+    lv_label_set_text(s_battery_lbl, SYMS[tier]);
+    lv_obj_set_style_text_color(s_battery_lbl,
+        tier == 0 ? lv_palette_main(LV_PALETTE_RED) : lv_color_white(), 0);
 }
 
 // Entering Monitor/Diagnostics always shows Back-only (BAR_PLACEHOLDER)
@@ -700,6 +742,11 @@ void ui_shell_create(void) {
     // existing no-animation convention, for deeply-nested breadcrumbs.
     lv_label_set_long_mode(s_title, LV_LABEL_LONG_DOT);
 
+    // Battery icon, pinned to the app bar's right edge by s_title's flex_grow
+    // above soaking up the rest of the row.
+    s_battery_lbl = lv_label_create(app_bar);
+    lv_obj_set_style_text_color(s_battery_lbl, lv_color_white(), 0);
+
     lv_obj_t *content = lv_obj_create(root);
     lv_obj_set_width(content, LV_PCT(100));
     lv_obj_set_flex_grow(content, 1);
@@ -856,6 +903,7 @@ void ui_shell_create(void) {
 
 void ui_shell_poll(void) {
     if (can_link_is_online() != s_last_online) style_online_btn();
+    update_battery_icon();
     if (s_home_held && !s_home_exit_fired &&
         absolute_time_diff_us(s_home_press_at, get_absolute_time()) >= HOME_EXIT_HOLD_MS * 1000) {
         s_home_exit_fired = true;
