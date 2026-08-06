@@ -143,8 +143,27 @@ drivers, the OneWili API) is a git submodule, not a parent repo. Clone with
    instead — see `device_leds.c`.
 2. **Core0 stack is capped at 4 KB** (`PICO_STACK_SIZE=0x1000`) — use
    `static` buffers for anything non-trivial, not stack.
-3. **LVGL draw buffers live in PSRAM**, not SRAM — see `lvgl_port.c` and
-   `docs/build-notes.md` before changing `LV_MEM_SIZE` in `lv_conf.h`.
+3. **The app is PSRAM-resident.** `no_flash` binary type, linked to run at
+   `0x11000000` via `linker_overrides/`, with `.text`/`.rodata` in PSRAM and
+   only `.data`/`.bss`/`.heap` in SRAM. It is loaded from the SD card's
+   `/apps` by MAIN's PSRAM app loader and must never write display flash.
+   The UF2 is emitted by `tools/elf2uf2_psram.py`, not picotool (picotool
+   rejects a PSRAM entry point). Don't change the binary type or the linker
+   overrides without reading `docs/build-notes.md`.
+4. **Three `main.c` workarounds are load-bearing — do not "clean them up".**
+   The strong `runtime_init_early_resets()` override (the SDK's weak version
+   resets bank 0, killing PSRAM's chip select on GPIO 47 → lockup),
+   `psram_stub_irq_handover()` (the loader stub enters with `cpsid i` still
+   in force), and `board_init_psram_resident()` (`wilibsp`'s
+   `board_init_clk()` minus its overclock and `psram_reinitialize()`, both
+   fatal from PSRAM). Filed upstream as `freewili/wilibsp` #16, #17, #18.
+5. **`clk_sys` is 200 MHz, re-timed against the QMI window this code executes
+   from.** `psram_clock_raise_200()` pre-loads a timing that is legal at both
+   150 and 200 MHz *before* raising the clock, so the window is never out of
+   spec. Any change to clk_sys must redo that math (`MAX_SELECT` counts 64
+   clk_sys periods against 8 µs tCEM; `MIN_DESELECT` counts clk_sys periods
+   with one implied, against 18 ns tCPH) — a bare `set_sys_clock_khz()` will
+   hang or corrupt the app.
 
 See `docs/architecture.md` for the complete numbered list (MAIN CPU firmware
 dependency, CAN bitrate assumption, etc.).
@@ -156,8 +175,8 @@ dependency, CAN bitrate assumption, etc.).
   CPU over UART0 FwGUI link), cJSON 1.7.18 (config serialization).
 - Package manager: CMake + git submodules (`wilibsp`, `third_party/lvgl`) +
   CMake `FetchContent` for cJSON only.
-- Runtime / deployment target: FreeWili 2 display CPU (RP2350B), flashed
-  over CMSIS-DAP or drag-and-drop UF2.
+- Runtime / deployment target: FreeWili 2 display CPU (RP2350B), deployed as
+  a PSRAM app to the SD card's `/apps` folder.
 
 ### Commands
 
@@ -165,8 +184,9 @@ All run from the repo root (PowerShell):
 
 | Command           | What it does                                                                |
 | ------------------ | ---------------------------------------------------------------------------- |
-| `tools/build.ps1`  | Configure + build the on-target firmware (RelWithDebInfo). `-Clean` wipes `build/` first. |
-| `tools/flash.ps1`  | Program the built firmware over the CMSIS-DAP debug probe via OpenOCD.        |
+| `tools/build.ps1`  | Configure + build the on-target firmware (RelWithDebInfo). `-Clean` wipes `build/` first — required after *removing* a source file, not just adding one. |
+| `tools/deploy-sd.ps1` | **The only supported way to deploy this app.** Copies the UF2 to the SD card's `/apps` through MAIN's serial CLI. Pass `-ComPort` — auto-detect is unreliable on a multi-device bench. |
+| `tools/flash.ps1`  | Programs the DISPLAY RP2350 directly over SWD. **Never use this for wilicankit** — it overwrites the bootloader that loads apps from SD. |
 | `tools/rtt.ps1`    | Stream SEGGER RTT diagnostics from the target.                               |
 | `tools/test.ps1`   | Build + run the standalone host CTest tree in `test/` (`can_pack`, `storage_json`). Requires MSYS2 mingw64 gcc. |
 
@@ -201,8 +221,14 @@ points at these explicitly. No lint/typecheck tooling is configured.
 
 - Calling a MAIN-facing `onewili` function from anywhere other than
   `ow_link.c` or `can_link.c`, or inventing one that doesn't exist upstream.
-- Growing `LV_MEM_SIZE` or moving LVGL draw buffers to SRAM without reading
-  `docs/build-notes.md` first (previously caused a `.bss` overflow).
+- Running `tools/flash.ps1` against this app — it destroys the display
+  bootloader. Deploy with `tools/deploy-sd.ps1`.
+- Calling `set_sys_clock_khz()`, `board_init_clk()`, or `psram_reinitialize()`
+  without re-deriving the QMI M1 timing first — see hard constraint 5.
+- Moving the LVGL draw buffers (`s_buf1`/`s_buf2` in `lvgl_port.c`) or
+  growing `LV_MEM_SIZE` without reading `docs/build-notes.md` first. These
+  are two different things: the draw buffers are deliberately in **SRAM**,
+  while `LV_MEM_SIZE` is the LVGL heap, placed in PSRAM by `lv_psram_pool.c`.
 - Using stack buffers for non-trivial data — Core0's stack is a hard 4 KB
   cap.
 - Committing directly to `wilibsp`'s or `onewili`'s `origin/master` from
@@ -216,4 +242,18 @@ points at these explicitly. No lint/typecheck tooling is configured.
 Accumulated corrections. When the user corrects an approach, append a
 one-line rule here before ending the session. Write it concretely.
 
-- (empty)
+- Deploy with `tools/deploy-sd.ps1 -ComPort <port>`, never `tools/flash.ps1`.
+- Write terminal commands on a single line using `;` separators — multi-line
+  PowerShell gets mangled in the agent terminal.
+- When the board hangs before `main()` prints anything, halt over SWD and read
+  CFSR/HFSR/VTOR instead of reaching for RTT; the lockup precedes any output.
+  `openocd -f wilibsp/tools/openocd/freewili2.cfg -c init -c "targets
+  rp2350.cm0" -c halt -c "mdw 0xE000ED28 5" -c shutdown`. `pc=0xEFFFFFFE`
+  means LOCKUP; resolve faulting addresses with `arm-none-eabi-addr2line`.
+- An SDK `__weak` function (e.g. `runtime_init_early_resets`) can be replaced
+  by a strong definition in app code, with no CMake changes needed.
+- SRAM is no longer scarce (~446 KiB free since the PSRAM move). Don't apply
+  byte-shaving pressure to new code on the strength of older notes.
+- Never seed a picpwr awake mask from a single status frame — require two
+  agreeing frames. Echoing back one under-reported snapshot switches off every
+  rail it failed to report (this cut the SD card rail once).
