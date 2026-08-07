@@ -75,6 +75,7 @@ add_executable(wilicankit
     lvgl_port.c
     lv_psram_pool.c
     ui_icons.c
+    ui_background.c
     can_model.c
     ow_link.c
     can_link.c

@@ -8,6 +8,7 @@
 #include "ui_config.h"
 #include "ui_monitor.h"
 #include "ui_icons.h"
+#include "ui_background.h"
 #include "can_link.h"
 #include "ow_link.h"
 #include "lvgl_port.h"
@@ -776,6 +777,13 @@ void ui_shell_create(void) {
     lv_obj_set_style_radius(s_home_page, 0, 0);
     lv_obj_add_flag(s_home_page, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(s_home_page, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Centered in the home page, i.e. between the app bar and bottom
+    // button bar — pre-scaled (aspect-ratio preserved) to fit that area by
+    // tools/gen_background.py, so no runtime scaling is needed here.
+    lv_obj_t *home_bg = lv_image_create(s_home_page);
+    lv_image_set_src(home_bg, &ui_background);
+    lv_obj_center(home_bg);
 
     for (int i = 0; i < AREA_COUNT; i++) {
         s_pages[i] = lv_obj_create(content);
