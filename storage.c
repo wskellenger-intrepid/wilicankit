@@ -51,11 +51,11 @@ bool storage_sd_available(void) {
     return ow_sd_stat(NULL, "/appdata", &is_dir, &size) == OW_OK && is_dir;
 }
 
+// `name` is used exactly as given -- callers are responsible for the
+// extension (see storage.h); this never adds or strips one.
 static void build_path(char *out, size_t cap, const char *name) {
     const char *dir = (s_backend == STORAGE_BACKEND_SD) ? SD_STORAGE_DIR : STORAGE_DIR;
-    size_t len = strlen(name);
-    bool has_ext = len > 5 && strcasecmp(name + len - 5, ".json") == 0;
-    snprintf(out, cap, has_ext ? "%s/%s" : "%s/%s.json", dir, name);
+    snprintf(out, cap, "%s/%s", dir, name);
 }
 
 bool storage_name_is_valid(const char *name) {
@@ -83,7 +83,7 @@ static void sd_list_cb(const char *name, bool is_dir, uint32_t size, void *user)
     if (is_dir || ctx->count >= ctx->max_names) return;
     size_t len = strlen(name);
     if (len > 5 && strcasecmp(name + len - 5, ".json") == 0) {
-        size_t copy_len = len - 5;
+        size_t copy_len = len;
         if (copy_len >= STORAGE_NAME_MAX) copy_len = STORAGE_NAME_MAX - 1;
         memcpy(ctx->names[ctx->count], name, copy_len);
         ctx->names[ctx->count][copy_len] = '\0';
@@ -105,7 +105,7 @@ int storage_list_configs(char names[][STORAGE_NAME_MAX], int max_names) {
         if (fi.fattrib & AM_DIR) continue;
         size_t len = strlen(fi.fname);
         if (len > 5 && strcasecmp(fi.fname + len - 5, ".json") == 0) {
-            size_t copy_len = len - 5;
+            size_t copy_len = len;
             if (copy_len >= STORAGE_NAME_MAX) copy_len = STORAGE_NAME_MAX - 1;
             memcpy(names[n], fi.fname, copy_len);
             names[n][copy_len] = '\0';

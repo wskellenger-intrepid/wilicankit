@@ -29,14 +29,16 @@ storage_backend_t storage_get_backend(void);
 // poll.
 bool storage_sd_available(void);
 
-// Lists config names (no directory/extension) into `names[0..N)`, each up
-// to STORAGE_NAME_MAX bytes, at most `max_names` entries. Returns the
-// number found (0 if the active backend's media isn't available or the
+// Lists full file names (including their ".json" extension, exactly as
+// stored) of every "*.json" entry (case-insensitive) into `names[0..N)`,
+// each up to STORAGE_NAME_MAX bytes, at most `max_names` entries. Returns
+// the number found (0 if the active backend's media isn't available or the
 // directory doesn't exist).
 int storage_list_configs(char names[][STORAGE_NAME_MAX], int max_names);
 
-// True if the active backend already has a "<name>.json" config (used to
-// confirm overwrite before a Save As over an existing file).
+// True if the active backend already has a file named exactly `name` (pass
+// the full file name, e.g. "foo.json" -- used to confirm overwrite before a
+// Save As over an existing file).
 bool storage_config_exists(const char *name);
 
 // True if `name` is a non-empty, FAT32-safe file name: fits within
@@ -45,16 +47,18 @@ bool storage_config_exists(const char *name);
 bool storage_name_is_valid(const char *name);
 
 // Saves the current g_signals/g_messages/g_controls tables (see app_state.h)
-// as "<name>.json" under the active backend's config dir. Creates the dir
-// if needed.
+// under the active backend's config dir as the literal file name `name`
+// (pass the full file name, e.g. "foo.json" -- this never adds or assumes an
+// extension). Creates the dir if needed.
 bool storage_save_config(const char *name);
 
-// Loads "<name>.json" from the active backend, replacing the current
-// g_signals/g_messages/g_controls tables. On failure, current state is left
-// untouched (validated into a scratch buffer before committing).
+// Loads the file named exactly `name` from the active backend, replacing
+// the current g_signals/g_messages/g_controls tables. On failure, current
+// state is left untouched (validated into a scratch buffer before
+// committing).
 bool storage_load_config(const char *name);
 
-// Deletes "<name>.json" from the active backend.
+// Deletes the file named exactly `name` from the active backend.
 bool storage_delete_config(const char *name);
 
 #endif // WILICANKIT_STORAGE_H
