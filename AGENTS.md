@@ -157,9 +157,9 @@ drivers, the OneWili API) is a git submodule, not a parent repo. Clone with
    in force), and `board_init_psram_resident()` (`wilibsp`'s
    `board_init_clk()` minus its overclock and `psram_reinitialize()`, both
    fatal from PSRAM). Filed upstream as `freewili/wilibsp` #16, #17, #18.
-5. **`clk_sys` is 200 MHz, re-timed against the QMI window this code executes
-   from.** `psram_clock_raise_200()` pre-loads a timing that is legal at both
-   150 and 200 MHz *before* raising the clock, so the window is never out of
+5. **`clk_sys` is 250 MHz, re-timed against the QMI window this code executes
+   from.** `psram_clock_raise_250()` pre-loads a timing that is legal at both
+   150 and 250 MHz *before* raising the clock, so the window is never out of
    spec. Any change to clk_sys must redo that math (`MAX_SELECT` counts 64
    clk_sys periods against 8 µs tCEM; `MIN_DESELECT` counts clk_sys periods
    with one implied, against 18 ns tCPH) — a bare `set_sys_clock_khz()` will

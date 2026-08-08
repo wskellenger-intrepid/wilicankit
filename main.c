@@ -20,6 +20,7 @@
 #include "ow_link.h"
 #include "can_link.h"
 #include "device_leds.h"
+#include "dvi_mirror.h"
 #include "ui_shell.h"
 #include "app_state.h"
 
@@ -67,33 +68,50 @@ static void psram_stub_irq_handover(void) {
 }
 PICO_RUNTIME_INIT_FUNC_RUNTIME(psram_stub_irq_handover, PICO_RUNTIME_INIT_EARLIEST);
 
-// Fields common to the 150 and 200 MHz APS6404L timings. MIN_DESELECT counts
-// clk_sys periods with one implied, so 3 holds CS# high 20 ns at 200 MHz,
-// clearing the 18 ns tCPH minimum (and 26.7 ns at 150 MHz).
+// Fields common to the 150 and 250 MHz APS6404L timings. MIN_DESELECT=4
+// matches the SDK's own psram_configure_params() reference value at 250 MHz
+// clk_sys (wilibsp docs/hardware/facts.md — same APS6404L chip/CS pin as
+// adafruit_fruit_jam) and is also legal at 150 MHz, so it's reproduced by
+// hand once here because psram_reinitialize() can't run from PSRAM.
+// MIN_DESELECT=4 holds CS# high 20 ns at 250 MHz, clearing the 18 ns tCPH
+// minimum (33.3 ns at 150 MHz).
+//
+// RXDELAY is NOT included here: it compensates a fixed physical round-trip
+// delay expressed in clk_sys *cycles*, so the correct value scales with
+// clk_sys frequency (2 at 150/200 MHz, 3 at 250 MHz per the SDK reference).
+// Baking the 250 MHz-tuned RXDELAY=3 into a value written while clk_sys is
+// still 150 MHz corrupts PSRAM read data capture for the code this function
+// itself executes from PSRAM, producing an immediate garbage instruction
+// fetch -> HardFault -> lockup. It must be staged like MAX_SELECT below:
+// the pre-load write keeps the proven-safe low-clock value, and only the
+// post-raise write bumps it to the 250 MHz-tuned value.
 #define QMI_M1_TIMING_BASE (                                                   \
       ((uint32_t)1u << QMI_M1_TIMING_COOLDOWN_LSB)                             \
     | ((uint32_t)QMI_M1_TIMING_PAGEBREAK_VALUE_1024 << QMI_M1_TIMING_PAGEBREAK_LSB) \
-    | ((uint32_t)3u << QMI_M1_TIMING_MIN_DESELECT_LSB)                         \
-    | ((uint32_t)2u << QMI_M1_TIMING_RXDELAY_LSB)                              \
+    | ((uint32_t)4u << QMI_M1_TIMING_MIN_DESELECT_LSB)                         \
     | ((uint32_t)2u << QMI_M1_TIMING_CLKDIV_LSB))
 
 // The loader hands apps over at the SDK default 150 MHz. Raising clk_sys
 // shortens SCK and CS# high time the instant it takes effect, so the QMI window
 // this code fetches instructions from would be out of spec between the clock
 // change and the re-time. MAX_SELECT counts 64 clk_sys periods against an 8 us
-// tCEM, which allows 18 at 150 MHz and 25 at 200 — so 18 is legal at both, and
+// tCEM, which allows 18 at 150 MHz and 31 at 250 — so 18 is legal at both, and
 // pre-loading it means there is never an invalid window to run through.
-static void psram_clock_raise_200(void) {
+static void psram_clock_raise_250(void) {
     vreg_set_voltage(VREG_VOLTAGE_1_25);
     sleep_ms(10);
 
-    qmi_hw->m[1].timing = QMI_M1_TIMING_BASE | (18u << QMI_M1_TIMING_MAX_SELECT_LSB);
-    set_sys_clock_khz(200000, true);
-    qmi_hw->m[1].timing = QMI_M1_TIMING_BASE | (25u << QMI_M1_TIMING_MAX_SELECT_LSB);
+    qmi_hw->m[1].timing = QMI_M1_TIMING_BASE
+        | (2u << QMI_M1_TIMING_RXDELAY_LSB)
+        | (18u << QMI_M1_TIMING_MAX_SELECT_LSB);
+    set_sys_clock_khz(250000, true);
+    qmi_hw->m[1].timing = QMI_M1_TIMING_BASE
+        | (3u << QMI_M1_TIMING_RXDELAY_LSB)
+        | (31u << QMI_M1_TIMING_MAX_SELECT_LSB);
 }
 
 // Mirrors wilibsp's board_init_clk() with its clock/PSRAM prologue removed.
-// psram_clock_raise_200() above already handled clk_sys, and psram_reinitialize()
+// psram_clock_raise_250() above already handled clk_sys, and psram_reinitialize()
 // is documented unsafe from PSRAM (the loader's stub configured the chip).
 // Everything below is the tail of board_init_clk() verbatim; it belongs upstream
 // in wilibsp eventually.
@@ -117,12 +135,13 @@ static void board_init_psram_resident(void) {
 
 int main(void) {
     // Before board init: clk_peri and the SPI baud rates derive from clk_sys.
-    psram_clock_raise_200();
+    psram_clock_raise_250();
     board_init_psram_resident();
     DIAG("wilicankit: PSRAM-resident, clk_sys=%u Hz\n", clock_get_hz(clk_sys));
     st7796_init();
     board_backlight_set(1);
     ft6336_init();
+    dvi_mirror_init();  // clk_sys is already final; mirrors the LCD 1:1 over DVI
     // Must run before anything draws: agentio_init() zeroes the shadow
     // framebuffer that `fw screenshot`/`fw touch` read from (see
     // docs/drivers/agentio.md, "three app calls").

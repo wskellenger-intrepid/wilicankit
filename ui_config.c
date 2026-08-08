@@ -9,6 +9,7 @@
 #include "ui_controls.h"
 #include "can_link.h"
 #include "app_state.h"
+#include "dvi_mirror.h"
 #include "pico/stdlib.h"   // __uninitialized_psram, via pico/platform/sections.h
 #include <stdio.h>
 #include <string.h>
@@ -238,6 +239,11 @@ static void save_as_btn_cb(lv_event_t *e) {
 
 void ui_config_save_as(void) { save_as_btn_cb(NULL); }
 
+static void dvi_switch_cb(lv_event_t *e) {
+    lv_obj_t *sw = lv_event_get_target(e);
+    dvi_mirror_set_enabled(lv_obj_has_state(sw, LV_STATE_CHECKED));
+}
+
 // Storage dropdown changed: switch the active backend, clear the "currently
 // loaded" name (it belonged to the old backend's files), swap which list is
 // visible, and refresh it.
@@ -275,6 +281,20 @@ lv_obj_t *ui_config_create(lv_obj_t *parent) {
     lv_dropdown_set_options(s_backend_dd, "SD card\nUSB stick");
     lv_dropdown_set_selected(s_backend_dd, 0);   // SD is the default backend
     lv_obj_add_event_cb(s_backend_dd, backend_dropdown_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    lv_obj_t *dvi_row = lv_obj_create(parent);
+    lv_obj_set_size(dvi_row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_border_width(dvi_row, 0, 0);
+    lv_obj_set_style_pad_all(dvi_row, 0, 0);
+    lv_obj_set_flex_flow(dvi_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(dvi_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *dvi_lbl = lv_label_create(dvi_row);
+    lv_label_set_text(dvi_lbl, "DVI Mirror:");
+
+    lv_obj_t *dvi_sw = lv_switch_create(dvi_row);
+    if (dvi_mirror_enabled()) lv_obj_add_state(dvi_sw, LV_STATE_CHECKED);
+    lv_obj_add_event_cb(dvi_sw, dvi_switch_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     s_status_lbl = lv_label_create(parent);
     lv_label_set_text(s_status_lbl, "");
