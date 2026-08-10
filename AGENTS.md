@@ -143,27 +143,31 @@ drivers, the OneWili API) is a git submodule, not a parent repo. Clone with
    instead — see `device_leds.c`.
 2. **Core0 stack is capped at 4 KB** (`PICO_STACK_SIZE=0x1000`) — use
    `static` buffers for anything non-trivial, not stack.
-3. **The app is PSRAM-resident.** `no_flash` binary type, linked to run at
-   `0x11000000` via `linker_overrides/`, with `.text`/`.rodata` in PSRAM and
-   only `.data`/`.bss`/`.heap` in SRAM. It is loaded from the SD card's
-   `/apps` by MAIN's PSRAM app loader and must never write display flash.
-   The UF2 is emitted by `tools/elf2uf2_psram.py`, not picotool (picotool
-   rejects a PSRAM entry point). Don't change the binary type or the linker
-   overrides without reading `docs/build-notes.md`.
-4. **Three `main.c` workarounds are load-bearing — do not "clean them up".**
-   The strong `runtime_init_early_resets()` override (the SDK's weak version
-   resets bank 0, killing PSRAM's chip select on GPIO 47 → lockup),
-   `psram_stub_irq_handover()` (the loader stub enters with `cpsid i` still
-   in force), and `board_init_psram_resident()` (`wilibsp`'s
-   `board_init_clk()` minus its overclock and `psram_reinitialize()`, both
-   fatal from PSRAM). Filed upstream as `freewili/wilibsp` #16, #17, #18.
-5. **`clk_sys` is 250 MHz, re-timed against the QMI window this code executes
-   from.** `psram_clock_raise_250()` pre-loads a timing that is legal at both
-   150 and 250 MHz *before* raising the clock, so the window is never out of
-   spec. Any change to clk_sys must redo that math (`MAX_SELECT` counts 64
-   clk_sys periods against 8 µs tCEM; `MIN_DESELECT` counts clk_sys periods
-   with one implied, against 18 ns tCPH) — a bare `set_sys_clock_khz()` will
-   hang or corrupt the app.
+3. **The app is PSRAM-resident, built with wilibsp's native `fw2_psram_app()`
+   contract macro** (`CMakeLists.txt`), not a hand-rolled `no_flash` build.
+   It links to run at `0x11000000` (`.text`/`.rodata`/`.data` all in PSRAM,
+   via `wilibsp/bsp/app/psram_link/`), is loaded from the SD card's `/apps`
+   by MAIN's PSRAM app loader, and must never write display flash. The UF2
+   is generated/validated by wilibsp's own `tools/make_app_uf2.py`/
+   `check_app_uf2.py`, not picotool (picotool rejects a PSRAM entry point).
+   Don't add a custom linker override or UF2 step here without reading
+   `docs/build-notes.md` — the previous hand-rolled `linker_overrides/` +
+   `tools/elf2uf2_psram.py` were removed in favor of the upstream mechanism.
+4. **The PSRAM bootstrap (clock/QMI retime, `.data`/`.bss` init) lives in
+   wilibsp, not `main.c`.** `bsp/app/psram_bootstrap.c`/`psram_startup.S`
+   (pulled in by `fw2_psram_app()`) run from a dedicated `.sram_bootstrap`
+   SRAM section — along with the SDK's `clocks.c.obj`/`psram.c.obj` — so the
+   entire clk_sys raise + QMI re-time executes with the CPU fetching from
+   real SRAM, never from the PSRAM window being reconfigured, before jumping
+   into this app's PSRAM-resident `main()`. `main()` does **not** call
+   `board_init()` (a PSRAM app inherits its effect already applied) and must
+   not reintroduce a hand-rolled clock/QMI retime. Filed upstream as
+   `freewili/wilibsp` #16, #17, #18 (superseded — do not resurrect them).
+5. **`clk_sys` is 250 MHz** (`BOARD_SYS_CLOCK_KHZ`, `wilibsp/bsp/platform/board.h`),
+   set by wilibsp's own `board_init_psram()` inside the SRAM bootstrap above.
+   This app has no QMI timing math of its own to maintain any more; if
+   `clk_sys` or PSRAM timing ever needs to change, that change belongs in
+   `wilibsp`, not here.
 
 See `docs/architecture.md` for the complete numbered list (MAIN CPU firmware
 dependency, CAN bitrate assumption, etc.).
@@ -223,8 +227,9 @@ points at these explicitly. No lint/typecheck tooling is configured.
   `ow_link.c` or `can_link.c`, or inventing one that doesn't exist upstream.
 - Running `tools/flash.ps1` against this app — it destroys the display
   bootloader. Deploy with `tools/deploy-sd.ps1`.
-- Calling `set_sys_clock_khz()`, `board_init_clk()`, or `psram_reinitialize()`
-  without re-deriving the QMI M1 timing first — see hard constraint 5.
+- Calling `set_sys_clock_khz()`, `board_init_clk()`, `board_init()`, or
+  `psram_reinitialize()` from `main.c` — the PSRAM bootstrap in `wilibsp`
+  already did this from SRAM before `main()` runs; see hard constraints 4-5.
 - Moving the LVGL draw buffers (`s_buf1`/`s_buf2` in `lvgl_port.c`) or
   growing `LV_MEM_SIZE` without reading `docs/build-notes.md` first. These
   are two different things: the draw buffers are deliberately in **SRAM**,

@@ -2,6 +2,7 @@
 #include "ow_link.h"
 #include "onewili.h"
 #include "onewili_fwgui.h"
+#include "input/app_recovery_onewili.h"
 #include "platform/diag.h"
 #include "pico/stdlib.h"
 
@@ -14,9 +15,12 @@ static ow_device __uninitialized_psram("wilicankit_ow_device") s_dev;
 static bool s_open = false;
 
 void ow_link_open(void) {
-    while (ow_open_fwgui(&s_dev) != OW_OK) {
+    // fw2_app_recovery_open_onewili() services HOME/PAGE recovery while this
+    // blocking open (and its retry sleep) would otherwise hide the keyboard
+    // link for the full timeout.
+    while (fw2_app_recovery_open_onewili(&s_dev) != OW_OK) {
         DIAG("ow_link: FwGUI link open failed (is the main CPU running stock fw?), retry in 1 s\n");
-        sleep_ms(1000);
+        fw2_app_recovery_sleep_ms(1000);
     }
     s_open = true;
     DIAG("ow_link: link up\n");
