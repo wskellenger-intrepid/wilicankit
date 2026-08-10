@@ -17,7 +17,7 @@
 #include "pico/stdlib.h"   // absolute_time_t / get_absolute_time, for Home hold-to-exit
 #include <string.h>
 
-#define WILICANKIT_VERSION "0.1.1"
+#define WILICANKIT_VERSION "0.1.2"
 
 typedef enum {
     AREA_MONITOR = 0,
