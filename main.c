@@ -46,12 +46,37 @@ int main(void) {
     lv_timer_handler();
     board_backlight_set(1);
 
-    // fw2_app_recovery_init() requests+waits for the declared POWER_ZONES
-    // (DISPLAY, SDCARD, CAN — see CMakeLists.txt) and starts servicing HOME
-    // (5 s hold -> watchdog reboot to the recovery loader) and PAGE (5 s hold
-    // -> About screen) on every fw2_app_recovery_task() call below.
+    // No POWER_ZONES declared (see CMakeLists.txt): fw2_app_recovery_init()
+    // skips its own built-in zone wait entirely, so this only arms HOME (5 s
+    // hold -> watchdog reboot to the recovery loader) and PAGE (5 s hold ->
+    // About screen) servicing on every fw2_app_recovery_task() call below.
     fw2_app_recovery_init();
     fw2_app_recovery_wrap_sd();  // service recovery during blocking ow_sd_* calls (storage.c)
+
+    // The CAN rail may be off at boot: request it and wait for the apply
+    // (docs/drivers/power.md). On firmware with rails already on, the first
+    // status frame proves it; on firmware with no status frames at all
+    // (confirmed on hardware: picpwr_rails() never succeeds after a
+    // `fw run-app` relaunch), give up gracefully rather than blocking
+    // forever like fw2_app_recovery_init()'s own POWER_ZONES wait would.
+    picpwr_keep_awake(picpwr_zone_bit(PICPWR_ZONE_CAN));
+    {
+        absolute_time_t give_up   = make_timeout_time_ms(10000);
+        absolute_time_t no_frames = make_timeout_time_ms(4000);
+        uint32_t rails;
+        while (!time_reached(give_up)) {
+            fw2_app_recovery_task();
+            if (picpwr_rails(&rails)) {
+                if (rails & picpwr_zone_bit(PICPWR_ZONE_CAN)) break;
+            } else if (time_reached(no_frames)) {
+                break;
+            }
+            sleep_ms(25);
+        }
+        DIAG("picpwr: CAN controller's rail %s\n",
+             (picpwr_rails(&rails) && (rails & picpwr_zone_bit(PICPWR_ZONE_CAN)))
+                 ? "up" : "state unknown");
+    }
 
     ow_link_open();    // blocks with retry DIAGs until the MAIN CPU link is up
     can_link_attach(ow_link_device());

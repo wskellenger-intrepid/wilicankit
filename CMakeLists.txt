@@ -119,7 +119,15 @@ target_compile_definitions(wilicankit PRIVATE PICO_STACK_SIZE=0x1000)
 # PSRAM-resident main() — see AGENTS.md constraint 5) and generates/validates
 # the UF2 (its own make_app_uf2.py/check_app_uf2.py, not picotool, which
 # rejects a PSRAM entry point).
+#
+# Deliberately NO POWER_ZONES here: fw2_app_recovery_init() blocks with no
+# timeout until every declared zone reports powered (see wilibsp
+# bsp/input/app_recovery.c), and on hardware whose MAIN CPU never emits a
+# picpwr status frame at all, picpwr_rails() never succeeds and that wait
+# never returns — confirmed hung on real hardware after a `fw run-app`
+# relaunch (rails stuck at have=0x0 for >60s). main.c reimplements its own
+# bounded/graceful CAN-rail wait instead (10s give-up, 4s no-frames
+# fallback), matching pre-migration behavior.
 fw2_psram_app(wilicankit
     VERSION 001
-    DESCRIPTION "General-purpose, user-configurable CAN device driver/GUI"
-    POWER_ZONES DISPLAY SDCARD CAN)
+    DESCRIPTION "General-purpose, user-configurable CAN device driver/GUI")
