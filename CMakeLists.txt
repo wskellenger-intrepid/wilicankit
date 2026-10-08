@@ -97,7 +97,6 @@ add_executable(wilicankit
     storage.c
     storage_json.c
     ui_config.c
-    dvi_mirror.c
 )
 target_include_directories(wilicankit PRIVATE ${cjson_SOURCE_DIR})
 target_link_libraries(wilicankit freewili2_bsp onewili_fwgui lvgl cjson)

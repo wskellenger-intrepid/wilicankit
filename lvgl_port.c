@@ -6,7 +6,6 @@
 #include "platform/psram.h"
 #include "platform/diag.h"
 #include "pico/stdlib.h"   // time_us_64
-#include "dvi_mirror.h"
 
 // Partial-render draw buffers (double-buffered), in SRAM rather than PSRAM.
 // LVGL's CPU-side software rendering into a PSRAM buffer measured ~2x
@@ -54,10 +53,6 @@ static void flush_done_cb(void) {
 
 static void disp_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
     (void)disp;
-    // Mirror while pixels are still native little-endian -- HSTX wants the
-    // same order LVGL renders in, unlike the ST7796's big-endian wire order.
-    dvi_mirror_flush(area, (const uint16_t *)px_map);
-
     // LVGL renders RGB565 in native (little-endian) byte order; the ST7796
     // driver's blit/flush API wants big-endian (wire order) 16-bit words.
     int32_t px_count = lv_area_get_width(area) * lv_area_get_height(area);

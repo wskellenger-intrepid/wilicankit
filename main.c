@@ -13,7 +13,6 @@
 #include "ow_link.h"
 #include "can_link.h"
 #include "device_leds.h"
-#include "dvi_mirror.h"
 #include "ui_shell.h"
 #include "app_state.h"
 
@@ -26,7 +25,6 @@ int main(void) {
     DIAG("wilicankit: PSRAM-resident, clk_sys=%u Hz\n", clock_get_hz(clk_sys));
     st7796_init();
     ft6336_init();
-    dvi_mirror_init();  // clk_sys is already final; mirrors the LCD 1:1 over DVI
     // Must run before anything draws: agentio_init() zeroes the shadow
     // framebuffer that `fw screenshot`/`fw touch` read from (see
     // docs/drivers/agentio.md, "three app calls").
