@@ -253,12 +253,16 @@ one-line rule here before ending the session. Write it concretely.
 - When the board hangs before `main()` prints anything, halt over SWD and read
   CFSR/HFSR/VTOR instead of reaching for RTT; the lockup precedes any output.
   `openocd -f wilibsp/tools/openocd/freewili2.cfg -c init -c "targets
-  rp2350.cm0" -c halt -c "mdw 0xE000ED28 5" -c shutdown`. `pc=0xEFFFFFFE`
+  rp2350.dap.core0" -c halt -c "mdw 0xE000ED28 5" -c shutdown`. `pc=0xEFFFFFFE`
   means LOCKUP; resolve faulting addresses with `arm-none-eabi-addr2line`.
 - An SDK `__weak` function (e.g. `runtime_init_early_resets`) can be replaced
   by a strong definition in app code, with no CMake changes needed.
-- SRAM is no longer scarce (~446 KiB free since the PSRAM move). Don't apply
-  byte-shaving pressure to new code on the strength of older notes.
+- App SRAM ends at `0x20070000` (wilibsp's `__StackTop`; the display loader
+  owns SRAM above it) and the 4 KB core0 stack sits just below that. The link
+  does NOT fail if `.bss` runs through the stack. After any submodule bump or
+  new static buffer, check `arm-none-eabi-nm build/wilicankit.elf | grep
+  __bss_end__` is below `0x2006f000` (minus the 2 KB heap). Overlap shows up
+  as a LOCKUP with ASCII OneWili response text in the stacked frame.
 - Never seed a picpwr awake mask from a single status frame — require two
   agreeing frames. Echoing back one under-reported snapshot switches off every
   rail it failed to report (this cut the SD card rail once).
