@@ -42,7 +42,7 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 pico_sdk_init()
 
 add_subdirectory(wilibsp/bsp)
-add_subdirectory(wilibsp/libs/onewili)
+add_subdirectory(wilibsp/libs/onewili/wilibsp)
 
 # LVGL and cJSON deps. LVGL/cJSON's own demos/examples/ThorVG/test/utils
 # targets are disabled: we only need the widget/core (resp. parse/build)
